@@ -18,7 +18,7 @@ use crate::{util, wrapped_key::WrappedKey};
 pub const SUBKEY_LENGTH: usize = 32;
 
 #[derive(Zeroize, ZeroizeOnDrop)]
-pub struct MasterKey([u8; 64]);
+pub struct MasterKey([u8; SUBKEY_LENGTH * 2]);
 
 impl MasterKey {
     pub fn new_raw() -> Result<Self> {

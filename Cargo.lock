@@ -103,9 +103,11 @@ dependencies = [
  "aes-kw",
  "anyhow",
  "base64ct",
+ "hmac",
  "jsonwebtoken",
  "scrypt",
  "serde",
+ "sha2",
  "uuid",
  "zeroize",
 ]

@@ -1,6 +1,7 @@
 use aes_kw::KekAes256;
 use anyhow::{Context, Result};
 use base64ct::{Base64, Encoding};
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
     password_hash::{
@@ -28,7 +29,15 @@ impl MasterKey {
         Ok(key)
     }
 
-    pub fn new_wrapped(password: String, _version: u16) -> Result<WrappedKey> {
+    fn enc_key(&self) -> &[u8] {
+        &self.0[0..SUBKEY_LENGTH]
+    }
+
+    fn mac_key(&self) -> &[u8] {
+        &self.0[SUBKEY_LENGTH..]
+    }
+
+    pub fn new_wrapped(password: String, version: u32) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let mut wrapped_mac_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let params = Params::recommended();
@@ -38,33 +47,37 @@ impl MasterKey {
         let master_key = Self::new_raw().context("failed to generate master key")?;
 
         key_encryption_key
-            .wrap(&master_key.0[0..SUBKEY_LENGTH], &mut wrapped_enc_master_key)
+            .wrap(master_key.enc_key(), &mut wrapped_enc_master_key)
             .context("failed to wrap encryption master key")?;
         key_encryption_key
-            .wrap(&master_key.0[SUBKEY_LENGTH..], &mut wrapped_mac_master_key)
+            .wrap(master_key.mac_key(), &mut wrapped_mac_master_key)
             .context("failed to wrap MAC master key")?;
+
+        let version_mac = Hmac::<sha2::Sha256>::new_from_slice(master_key.mac_key())?
+            .chain_update(version.to_be_bytes())
+            .finalize()
+            .into_bytes();
 
         Ok(WrappedKey {
             version: 999,
             scrypt_salt: salt_string.to_string(),
-            scrypt_cost_param: 2_usize.pow(params.log_n() as u32),
+            scrypt_cost_param: 2_u32.pow(params.log_n() as u32),
             scrypt_block_size: params.r(),
             primary_master_key: Base64::encode_string(&wrapped_enc_master_key),
             hmac_master_key: Base64::encode_string(&wrapped_mac_master_key),
-            // TODO: HMAC of vault format version
-            version_mac: String::new(),
+            version_mac: Base64::encode_string(&version_mac),
         })
     }
 
     pub fn from_wrapped(wrapped_key: &WrappedKey, kek: KekAes256) -> Result<Self> {
-        let mut key = Self([0_u8; SUBKEY_LENGTH * 2]);
+        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
 
-        kek.unwrap(&wrapped_key.enc_key()?, &mut key.0[0..SUBKEY_LENGTH])
+        kek.unwrap(&wrapped_key.enc_key()?, &mut buffer[0..SUBKEY_LENGTH])
             .context("failed to unwrap encryption master key")?;
-        kek.unwrap(&wrapped_key.mac_key()?, &mut key.0[SUBKEY_LENGTH..])
+        kek.unwrap(&wrapped_key.mac_key()?, &mut buffer[SUBKEY_LENGTH..])
             .context("failed to unwrap MAC master key")?;
 
-        Ok(key)
+        Ok(Self(buffer))
     }
 
     pub fn sign_jwt(&self, header: Header, claims: impl Serialize) -> Result<String> {

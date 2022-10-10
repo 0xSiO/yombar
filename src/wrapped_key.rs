@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WrappedKey {
-    pub version: u16,
+    pub version: u32,
     pub scrypt_salt: String,
-    pub scrypt_cost_param: usize,
+    pub scrypt_cost_param: u32,
     pub scrypt_block_size: u32,
     pub primary_master_key: String,
     pub hmac_master_key: String,

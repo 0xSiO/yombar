@@ -16,8 +16,8 @@ pub enum CipherCombo {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
     pub id: Uuid,
-    pub format_version: u16,
-    pub shortening_threshold: u16,
+    pub format_version: u32,
+    pub shortening_threshold: u32,
     pub cipher_combo: CipherCombo,
     pub master_key_uri: String,
     pub signing_algorithm: Algorithm,
@@ -26,8 +26,8 @@ pub struct Config {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigClaims {
-    format: u16,
-    shortening_threshold: u16,
+    format: u32,
+    shortening_threshold: u32,
     jti: Uuid,
     cipher_combo: CipherCombo,
 }

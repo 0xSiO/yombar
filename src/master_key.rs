@@ -1,6 +1,7 @@
 use aes_kw::KekAes256;
 use anyhow::{Context, Result};
 use base64ct::{Base64, Encoding};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
     password_hash::{
         rand_core::{OsRng, RngCore},
@@ -8,7 +9,7 @@ use scrypt::{
     },
     Params,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::util;
@@ -80,5 +81,19 @@ impl MasterKey {
             .context("failed to unwrap MAC master key")?;
 
         Ok(key)
+    }
+
+    pub fn sign_jwt(&self, header: Header, claims: impl Serialize) -> Result<String> {
+        jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(&self.0))
+            .context("failed to sign JWT")
+    }
+
+    pub fn verify_jwt<T: DeserializeOwned>(
+        &self,
+        token: String,
+        validation: Validation,
+    ) -> Result<TokenData<T>> {
+        jsonwebtoken::decode(&token, &DecodingKey::from_secret(&self.0), &validation)
+            .context("failed to verify JWT")
     }
 }

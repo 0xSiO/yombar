@@ -1,10 +1,7 @@
 use anyhow::{Context, Result};
 use scrypt::{password_hash::SaltString, Params};
 
-use crate::{
-    master_key::{MasterKey, WrappedKey},
-    util,
-};
+use crate::{master_key::MasterKey, util, wrapped_key::WrappedKey};
 
 mod config;
 

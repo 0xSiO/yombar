@@ -1,72 +1,22 @@
-use aes_kw::Kek;
+use aes_kw::{Kek, KekAes256};
 use anyhow::{Context, Result};
-use base64ct::{Base64, Encoding};
 use scrypt::{
-    password_hash::{
-        rand_core::{OsRng, RngCore},
-        PasswordHasher, SaltString,
-    },
+    password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
-use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MasterKeyInfo {
-    pub version: u16,
-    pub scrypt_salt: String,
-    pub scrypt_cost_param: usize,
-    pub scrypt_block_size: u32,
-    pub primary_master_key: String,
-    pub hmac_master_key: String,
-    pub version_mac: String,
-}
+const KEK_LENGTH: usize = 32;
 
-pub fn derive_master_key(password: &[u8]) -> Result<MasterKeyInfo> {
-    let mut kek_bytes = [0_u8; 32];
-    let mut enc_master_key = [0_u8; 32];
-    let mut mac_master_key = [0_u8; 32];
-    let mut wrapped_enc_master_key = [0_u8; 40];
-    let mut wrapped_mac_master_key = [0_u8; 40];
-
-    let params = Params::recommended();
-    let salt = SaltString::generate(OsRng);
-    let key_encryption_key = Scrypt
-        .hash_password_customized(password, None, None, params, &salt)
+pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
+    let password_hash = Scrypt
+        .hash_password_customized(password.as_bytes(), None, None, params, salt)
         .context("failed to generate key-encryption key")?;
 
-    debug_assert_eq!(key_encryption_key.hash.unwrap().len(), 32);
+    password.zeroize();
+    debug_assert_eq!(password_hash.hash.unwrap().len(), KEK_LENGTH);
 
-    kek_bytes.copy_from_slice(key_encryption_key.hash.unwrap().as_bytes());
-    let kek = Kek::from(kek_bytes);
-
-    OsRng
-        .try_fill_bytes(&mut enc_master_key)
-        .context("failed to generate random bytes")?;
-
-    kek.wrap(&enc_master_key, &mut wrapped_enc_master_key)
-        .context("failed to wrap encryption master key")?;
-
-    enc_master_key.zeroize();
-
-    OsRng
-        .try_fill_bytes(&mut mac_master_key)
-        .context("failed to generate random bytes")?;
-
-    kek.wrap(&mac_master_key, &mut wrapped_mac_master_key)
-        .context("failed to wrap MAC master key")?;
-
-    mac_master_key.zeroize();
-
-    Ok(MasterKeyInfo {
-        version: 999,
-        scrypt_salt: salt.to_string(),
-        scrypt_cost_param: 2_usize.pow(params.log_n() as u32),
-        scrypt_block_size: params.r(),
-        primary_master_key: Base64::encode_string(&wrapped_enc_master_key),
-        hmac_master_key: Base64::encode_string(&wrapped_mac_master_key),
-        // TODO: HMAC of vault format version
-        version_mac: String::new(),
-    })
+    let mut kek_bytes = [0_u8; KEK_LENGTH];
+    kek_bytes.copy_from_slice(password_hash.hash.unwrap().as_bytes());
+    Ok(Kek::from(kek_bytes))
 }

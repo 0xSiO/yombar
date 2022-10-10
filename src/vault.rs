@@ -1,6 +1,6 @@
 use aes_kw::KekAes256;
 
-use crate::master_key::WrappedKeyInfo;
+use crate::master_key::WrappedKey;
 
 mod config;
 
@@ -14,7 +14,7 @@ pub use self::config::*;
 // parameters.
 pub struct Vault {
     config: Config,
-    key_info: WrappedKeyInfo,
+    key_info: WrappedKey,
     // TODO: Zero this on drop?
     kek: Option<KekAes256>,
 }

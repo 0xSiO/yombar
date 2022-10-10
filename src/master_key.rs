@@ -18,7 +18,7 @@ pub const SUBKEY_LENGTH: usize = 32;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WrappedKeyInfo {
+pub struct WrappedKey {
     pub version: u16,
     pub scrypt_salt: String,
     pub scrypt_cost_param: usize,
@@ -40,7 +40,7 @@ impl MasterKey {
         Ok(key)
     }
 
-    pub fn new_wrapped(password: String, _version: u16) -> Result<WrappedKeyInfo> {
+    pub fn new_wrapped(password: String, _version: u16) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let mut wrapped_mac_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let params = Params::recommended();
@@ -56,7 +56,7 @@ impl MasterKey {
             .wrap(&master_key.0[SUBKEY_LENGTH..], &mut wrapped_mac_master_key)
             .context("failed to wrap MAC master key")?;
 
-        Ok(WrappedKeyInfo {
+        Ok(WrappedKey {
             version: 999,
             scrypt_salt: salt_string.to_string(),
             scrypt_cost_param: 2_usize.pow(params.log_n() as u32),
@@ -68,12 +68,12 @@ impl MasterKey {
         })
     }
 
-    pub fn from_wrapped(wrapped_key_info: &WrappedKeyInfo, kek: KekAes256) -> Result<Self> {
+    pub fn from_wrapped(wrapped_key: &WrappedKey, kek: KekAes256) -> Result<Self> {
         let mut key = Self([0_u8; SUBKEY_LENGTH * 2]);
 
-        let wrapped_enc_key = Base64::decode_vec(&wrapped_key_info.primary_master_key)
+        let wrapped_enc_key = Base64::decode_vec(&wrapped_key.primary_master_key)
             .context("failed to decode wrapped encryption key")?;
-        let wrapped_mac_key = Base64::decode_vec(&wrapped_key_info.hmac_master_key)
+        let wrapped_mac_key = Base64::decode_vec(&wrapped_key.hmac_master_key)
             .context("failed to decode wrapped MAC key")?;
         kek.unwrap(&wrapped_enc_key, &mut key.0[0..SUBKEY_LENGTH])
             .context("failed to unwrap encryption master key")?;

@@ -5,7 +5,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
     password_hash::{
         rand_core::{OsRng, RngCore},
-        SaltString,
+        Salt, SaltString,
     },
     Params,
 };
@@ -26,6 +26,29 @@ pub struct WrappedKey {
     pub primary_master_key: String,
     pub hmac_master_key: String,
     pub version_mac: String,
+}
+
+impl WrappedKey {
+    pub fn salt(&self) -> Result<Salt> {
+        Salt::new(&self.scrypt_salt).context("failed to parse scrypt salt")
+    }
+
+    pub fn params(&self) -> Params {
+        todo!()
+    }
+
+    pub fn enc_key(&self) -> Result<Vec<u8>> {
+        Base64::decode_vec(&self.primary_master_key)
+            .context("failed to decode wrapped encryption key")
+    }
+
+    pub fn mac_key(&self) -> Result<Vec<u8>> {
+        Base64::decode_vec(&self.hmac_master_key).context("failed to decode wrapped MAC key")
+    }
+
+    pub fn version_mac(&self) -> Result<Vec<u8>> {
+        Base64::decode_vec(&self.version_mac).context("failed to decode format version MAC")
+    }
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -71,13 +94,9 @@ impl MasterKey {
     pub fn from_wrapped(wrapped_key: &WrappedKey, kek: KekAes256) -> Result<Self> {
         let mut key = Self([0_u8; SUBKEY_LENGTH * 2]);
 
-        let wrapped_enc_key = Base64::decode_vec(&wrapped_key.primary_master_key)
-            .context("failed to decode wrapped encryption key")?;
-        let wrapped_mac_key = Base64::decode_vec(&wrapped_key.hmac_master_key)
-            .context("failed to decode wrapped MAC key")?;
-        kek.unwrap(&wrapped_enc_key, &mut key.0[0..SUBKEY_LENGTH])
+        kek.unwrap(&wrapped_key.enc_key()?, &mut key.0[0..SUBKEY_LENGTH])
             .context("failed to unwrap encryption master key")?;
-        kek.unwrap(&wrapped_mac_key, &mut key.0[SUBKEY_LENGTH..])
+        kek.unwrap(&wrapped_key.mac_key()?, &mut key.0[SUBKEY_LENGTH..])
             .context("failed to unwrap MAC master key")?;
 
         Ok(key)

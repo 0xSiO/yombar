@@ -9,6 +9,7 @@ use scrypt::{
     Params, Scrypt,
 };
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,15 +24,11 @@ pub struct MasterKeyInfo {
 }
 
 pub fn derive_master_key(password: &[u8]) -> Result<MasterKeyInfo> {
+    let mut kek_bytes = [0_u8; 32];
     let mut enc_master_key = [0_u8; 32];
     let mut mac_master_key = [0_u8; 32];
-
-    OsRng
-        .try_fill_bytes(&mut enc_master_key)
-        .context("failed to generate random bytes")?;
-    OsRng
-        .try_fill_bytes(&mut mac_master_key)
-        .context("failed to generate random bytes")?;
+    let mut wrapped_enc_master_key = [0_u8; 40];
+    let mut wrapped_mac_master_key = [0_u8; 40];
 
     let params = Params::recommended();
     let salt = SaltString::generate(OsRng);
@@ -41,17 +38,26 @@ pub fn derive_master_key(password: &[u8]) -> Result<MasterKeyInfo> {
 
     debug_assert_eq!(key_encryption_key.hash.unwrap().len(), 32);
 
-    let mut kek_bytes = [0u8; 32];
     kek_bytes.copy_from_slice(key_encryption_key.hash.unwrap().as_bytes());
     let kek = Kek::from(kek_bytes);
 
-    let mut wrapped_enc_master_key = [0_u8; 40];
-    let mut wrapped_mac_master_key = [0_u8; 40];
+    OsRng
+        .try_fill_bytes(&mut enc_master_key)
+        .context("failed to generate random bytes")?;
 
     kek.wrap(&enc_master_key, &mut wrapped_enc_master_key)
         .context("failed to wrap encryption master key")?;
+
+    enc_master_key.zeroize();
+
+    OsRng
+        .try_fill_bytes(&mut mac_master_key)
+        .context("failed to generate random bytes")?;
+
     kek.wrap(&mac_master_key, &mut wrapped_mac_master_key)
-        .context("failed to wrap encryption master key")?;
+        .context("failed to wrap MAC master key")?;
+
+    mac_master_key.zeroize();
 
     Ok(MasterKeyInfo {
         version: 999,

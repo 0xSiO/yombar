@@ -46,7 +46,7 @@ impl MasterKey {
         let params = Params::recommended();
         let salt_string = SaltString::generate(OsRng);
         let key_encryption_key = util::derive_kek(password, params, salt_string.as_salt())
-            .context("failed to derive key-encryption-key")?;
+            .context("failed to derive key-encryption key")?;
         let master_key = Self::new_raw().context("failed to generate master key")?;
 
         key_encryption_key

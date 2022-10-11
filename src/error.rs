@@ -1,4 +1,16 @@
+use std::io;
+
 use scrypt::password_hash::{self, rand_core};
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigLoadError {
+    #[error("failed to read vault config file")]
+    ReadConfigFile(#[from] io::Error),
+    #[error("failed to decode JWT")]
+    JwtDecodeError(#[from] jsonwebtoken::errors::Error),
+    #[error("JWT header is missing `kid` claim")]
+    JwtMissingKeyId,
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("failed to derive key-encryption key")]

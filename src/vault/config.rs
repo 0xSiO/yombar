@@ -5,6 +5,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::error::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CipherCombo {
     /// AES-SIV for file name encryption, AES-CTR + HMAC for content encryption.
@@ -35,13 +37,13 @@ struct ConfigClaims {
 }
 
 impl Config {
-    pub fn from_file(path: impl AsRef<Path>, password: String) -> Result<Self> {
-        let jwt = fs::read_to_string(path).context("failed to read vault config file")?;
-        let header = jsonwebtoken::decode_header(&jwt).context("failed to decode JWT header")?;
-        let master_key_uri = header.kid.context("no `kid` claim in JWT header")?;
+    pub fn from_file(path: impl AsRef<Path>, _password: String) -> Result<Self, ConfigLoadError> {
+        let jwt = fs::read_to_string(path)?;
+        let header = jsonwebtoken::decode_header(&jwt)?;
+        let master_key_uri = header.kid.ok_or(ConfigLoadError::JwtMissingKeyId)?;
 
         if master_key_uri.starts_with("masterkeyfile:") {
-            let key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
+            let _key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
             // TODO: Derive KEK, decrypt wrapped key, verify JWT
             todo!()
         } else {

@@ -5,6 +5,7 @@ use scrypt::{
 };
 use serde::{Deserialize, Serialize};
 
+// TODO: Validate/convert fields when serializing/deserializing
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WrappedKey {

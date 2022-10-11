@@ -1,3 +1,5 @@
+use std::{fs, path::Path};
+
 use anyhow::{Context, Result};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -33,6 +35,20 @@ struct ConfigClaims {
 }
 
 impl Config {
+    pub fn from_file(path: impl AsRef<Path>, password: String) -> Result<Self> {
+        let jwt = fs::read_to_string(path).context("failed to read vault config file")?;
+        let header = jsonwebtoken::decode_header(&jwt).context("failed to decode JWT header")?;
+        let master_key_uri = header.kid.context("no `kid` claim in JWT header")?;
+
+        if master_key_uri.starts_with("masterkeyfile:") {
+            let key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
+            // TODO: Derive KEK, decrypt wrapped key, verify JWT
+            todo!()
+        } else {
+            todo!("only URIs starting with 'masterkeyfile:' are supported")
+        }
+    }
+
     pub fn as_jwt(&self) -> Result<String> {
         let mut header = Header::new(self.signing_algorithm);
         header.kid.replace(self.master_key_uri.clone());

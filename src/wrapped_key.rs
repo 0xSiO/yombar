@@ -1,6 +1,8 @@
-use anyhow::{Context, Result};
 use base64ct::{Base64, Encoding};
-use scrypt::{password_hash::Salt, Params};
+use scrypt::{
+    password_hash::{self, Salt},
+    Params,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,25 +18,24 @@ pub struct WrappedKey {
 }
 
 impl WrappedKey {
-    pub fn salt(&self) -> Result<Salt> {
-        Salt::new(&self.scrypt_salt).context("failed to parse scrypt salt")
+    pub fn salt(&self) -> Result<Salt, password_hash::Error> {
+        Salt::new(&self.scrypt_salt)
     }
 
     // TODO: Construct params from self
-    pub fn params(&self) -> Result<Params> {
-        Ok(Params::recommended())
+    pub fn params(&self) -> Params {
+        Params::recommended()
     }
 
-    pub fn enc_key(&self) -> Result<Vec<u8>> {
+    pub fn enc_key(&self) -> Result<Vec<u8>, base64ct::Error> {
         Base64::decode_vec(&self.primary_master_key)
-            .context("failed to decode wrapped encryption key")
     }
 
-    pub fn mac_key(&self) -> Result<Vec<u8>> {
-        Base64::decode_vec(&self.hmac_master_key).context("failed to decode wrapped MAC key")
+    pub fn mac_key(&self) -> Result<Vec<u8>, base64ct::Error> {
+        Base64::decode_vec(&self.hmac_master_key)
     }
 
-    pub fn version_mac(&self) -> Result<Vec<u8>> {
-        Base64::decode_vec(&self.version_mac).context("failed to decode format version MAC")
+    pub fn version_mac(&self) -> Result<Vec<u8>, base64ct::Error> {
+        Base64::decode_vec(&self.version_mac)
     }
 }

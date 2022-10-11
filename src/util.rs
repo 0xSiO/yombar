@@ -1,17 +1,19 @@
 use aes_kw::{Kek, KekAes256};
-use anyhow::{Context, Result};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
 use zeroize::Zeroize;
 
-use crate::master_key::SUBKEY_LENGTH;
+use crate::{error::*, master_key::SUBKEY_LENGTH};
 
-pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
-    let password_hash = Scrypt
-        .hash_password_customized(password.as_bytes(), None, None, params, salt)
-        .context("failed to hash password")?;
+pub fn derive_kek(
+    mut password: String,
+    params: Params,
+    salt: Salt,
+) -> Result<KekAes256, KekDerivationError> {
+    let password_hash =
+        Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
 
     password.zeroize();
     debug_assert_eq!(password_hash.hash.unwrap().len(), SUBKEY_LENGTH);

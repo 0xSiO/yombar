@@ -1,5 +1,4 @@
-use anyhow::Result;
-
+pub mod error;
 mod master_key;
 pub mod util;
 mod vault;
@@ -10,7 +9,3 @@ pub use self::{
     vault::{CipherCombo, Config, Vault},
     wrapped_key::WrappedKey,
 };
-
-fn main() -> Result<()> {
-    Ok(())
-}

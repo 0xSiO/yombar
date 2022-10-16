@@ -1,9 +1,13 @@
+use std::{fs, path::Path};
+
 use base64ct::{Base64, Encoding};
 use scrypt::{
     password_hash::{self, Salt},
     Params,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::error::*;
 
 // TODO: Validate/convert fields when serializing/deserializing
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +23,11 @@ pub struct WrappedKey {
 }
 
 impl WrappedKey {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, KeyFromFileError> {
+        let json = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&json)?)
+    }
+
     pub fn salt(&self) -> Result<Salt, password_hash::Error> {
         Salt::new(&self.scrypt_salt)
     }

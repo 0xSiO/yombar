@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use zeroize::Zeroize;
+
 use crate::{error::*, master_key::MasterKey, util, wrapped_key::WrappedKey};
 
 mod config;
@@ -18,8 +20,9 @@ impl Vault {
         self.master_key.is_none()
     }
 
-    pub fn unlock(&mut self, password: String) -> Result<(), VaultUnlockError> {
+    pub fn unlock(&mut self, mut password: String) -> Result<(), VaultUnlockError> {
         if !self.is_locked() {
+            password.zeroize();
             return Ok(());
         }
 

@@ -11,15 +11,15 @@ use scrypt::{
 use serde::{de::DeserializeOwned, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::*, util, wrapped_key::WrappedKey};
+use crate::wrapped_key::WrappedKey;
 
 pub const SUBKEY_LENGTH: usize = 32;
 
 #[derive(Zeroize, ZeroizeOnDrop)]
-pub struct MasterKey([u8; SUBKEY_LENGTH * 2]);
+pub struct MasterKey(pub(crate) [u8; SUBKEY_LENGTH * 2]);
 
 impl MasterKey {
-    pub fn new_raw() -> Result<Self, rand_core::Error> {
+    pub fn new() -> Result<Self, rand_core::Error> {
         let mut key = Self([0_u8; SUBKEY_LENGTH * 2]);
         OsRng.try_fill_bytes(&mut key.0)?;
         Ok(key)
@@ -33,36 +33,33 @@ impl MasterKey {
         &self.0[SUBKEY_LENGTH..]
     }
 
-    pub fn new_wrapped(password: String, version: u32) -> Result<WrappedKey, KeyDerivationError> {
+    pub fn wrap(
+        self,
+        key_encryption_key: KekAes256,
+        format_version: u32,
+    ) -> Result<WrappedKey, aes_kw::Error> {
         let mut wrapped_enc_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let mut wrapped_mac_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let params = Params::recommended();
         let salt_string = SaltString::generate(OsRng);
-        let key_encryption_key = util::derive_kek(password, params, salt_string.as_salt())?;
-        let master_key = Self::new_raw()?;
 
-        key_encryption_key.wrap(master_key.enc_key(), &mut wrapped_enc_master_key)?;
-        key_encryption_key.wrap(master_key.mac_key(), &mut wrapped_mac_master_key)?;
+        key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
+        key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
 
-        let version_mac = Hmac::<sha2::Sha256>::new_from_slice(master_key.mac_key())?
-            .chain_update(version.to_be_bytes())
+        let version_mac = Hmac::<sha2::Sha256>::new_from_slice(self.mac_key())
+            // Ok to unwrap, HMAC can take keys of any size
+            .unwrap()
+            .chain_update(format_version.to_be_bytes())
             .finalize()
             .into_bytes();
 
-        Ok(WrappedKey::new(
-            salt_string,
-            params,
-            wrapped_mac_master_key,
-            wrapped_mac_master_key,
-            version_mac.to_vec(),
-        ))
-    }
-
-    pub fn from_wrapped(wrapped_key: &WrappedKey, kek: KekAes256) -> Result<Self, aes_kw::Error> {
-        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
-        kek.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
-        kek.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
-        Ok(Self(buffer))
+        Ok(WrappedKey {
+            scrypt_salt: salt_string,
+            scrypt_params: params,
+            enc_key: wrapped_enc_master_key.to_vec(),
+            mac_key: wrapped_mac_master_key.to_vec(),
+            version_mac: version_mac.to_vec(),
+        })
     }
 
     pub fn sign_jwt(

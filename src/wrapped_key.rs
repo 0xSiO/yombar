@@ -1,5 +1,6 @@
 use std::{fs, path::Path};
 
+use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
 use scrypt::{
     password_hash::{Salt, SaltString},
@@ -7,10 +8,9 @@ use scrypt::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::error::*;
+use crate::{error::*, master_key::SUBKEY_LENGTH, MasterKey};
 
-// TODO: Validate/convert fields when serializing/deserializing
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawWrappedKey {
     version: u32,
@@ -22,31 +22,16 @@ struct RawWrappedKey {
     version_mac: String,
 }
 
+#[derive(Debug)]
 pub struct WrappedKey {
-    scrypt_salt: SaltString,
-    scrypt_params: Params,
-    enc_key: Vec<u8>,
-    mac_key: Vec<u8>,
-    version_mac: Vec<u8>,
+    pub(crate) scrypt_salt: SaltString,
+    pub(crate) scrypt_params: Params,
+    pub(crate) enc_key: Vec<u8>,
+    pub(crate) mac_key: Vec<u8>,
+    pub(crate) version_mac: Vec<u8>,
 }
 
 impl WrappedKey {
-    pub fn new(
-        scrypt_salt: impl Into<SaltString>,
-        scrypt_params: Params,
-        enc_key: impl Into<Vec<u8>>,
-        mac_key: impl Into<Vec<u8>>,
-        version_mac: impl Into<Vec<u8>>,
-    ) -> Self {
-        Self {
-            scrypt_salt: scrypt_salt.into(),
-            scrypt_params,
-            enc_key: enc_key.into(),
-            mac_key: mac_key.into(),
-            version_mac: version_mac.into(),
-        }
-    }
-
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, KeyFromFileError> {
         let json = fs::read_to_string(path)?;
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
@@ -84,5 +69,12 @@ impl WrappedKey {
 
     pub fn version_mac(&self) -> &[u8] {
         &self.version_mac
+    }
+
+    pub fn unwrap(self, key_encryption_key: KekAes256) -> Result<MasterKey, aes_kw::Error> {
+        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
+        key_encryption_key.unwrap(self.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
+        key_encryption_key.unwrap(self.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
+        Ok(MasterKey(buffer))
     }
 }

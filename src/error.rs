@@ -1,22 +1,6 @@
 use std::io;
 
-use scrypt::password_hash::{self, rand_core};
-
-#[derive(Debug, thiserror::Error)]
-#[error("failed to derive key-encryption key")]
-pub struct KekDerivationError(#[from] password_hash::Error);
-
-#[derive(Debug, thiserror::Error)]
-pub enum KeyDerivationError {
-    #[error(transparent)]
-    KekDerivation(#[from] KekDerivationError),
-    #[error("failed to generate random bytes")]
-    RandomByteGen(#[from] rand_core::Error),
-    #[error("failed to wrap key")]
-    AesKeyWrap(#[from] aes_kw::Error),
-    #[error("failed to create HMAC")]
-    Hmac(#[from] hmac::digest::InvalidLength),
-}
+use scrypt::password_hash;
 
 #[derive(Debug, thiserror::Error)]
 pub enum KeyFromFileError {
@@ -33,6 +17,10 @@ pub enum KeyFromFileError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[error("failed to derive key-encryption key")]
+pub struct KekDerivationError(#[from] password_hash::Error);
+
+#[derive(Debug, thiserror::Error)]
 pub enum VaultUnlockError {
     #[error("failed to read vault config file")]
     ReadConfigFile(#[from] io::Error),
@@ -46,4 +34,6 @@ pub enum VaultUnlockError {
     KekDerivation(#[from] KekDerivationError),
     #[error("failed to unwrap master key")]
     KeyUnwrap(#[from] aes_kw::Error),
+    #[error("unsupported key URI format: {0}")]
+    UnsupportedKeyUri(String),
 }

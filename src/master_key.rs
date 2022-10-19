@@ -33,6 +33,7 @@ impl MasterKey {
         &self.0[SUBKEY_LENGTH..]
     }
 
+    // TODO: Should we make this take &self?
     pub fn wrap(
         self,
         key_encryption_key: KekAes256,
@@ -60,6 +61,16 @@ impl MasterKey {
             mac_key: wrapped_mac_master_key.to_vec(),
             version_mac: version_mac.to_vec(),
         })
+    }
+
+    pub fn unwrap(
+        wrapped_key: &WrappedKey,
+        key_encryption_key: KekAes256,
+    ) -> Result<Self, aes_kw::Error> {
+        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
+        key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
+        key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
+        Ok(MasterKey(buffer))
     }
 
     pub fn sign_jwt(

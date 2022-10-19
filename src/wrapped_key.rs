@@ -1,6 +1,5 @@
 use std::{fs, path::Path};
 
-use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
 use scrypt::{
     password_hash::{Salt, SaltString},
@@ -8,7 +7,7 @@ use scrypt::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{error::*, master_key::SUBKEY_LENGTH, MasterKey};
+use crate::error::*;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,12 +68,5 @@ impl WrappedKey {
 
     pub fn version_mac(&self) -> &[u8] {
         &self.version_mac
-    }
-
-    pub fn unwrap(self, key_encryption_key: KekAes256) -> Result<MasterKey, aes_kw::Error> {
-        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
-        key_encryption_key.unwrap(self.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
-        key_encryption_key.unwrap(self.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
-        Ok(MasterKey(buffer))
     }
 }

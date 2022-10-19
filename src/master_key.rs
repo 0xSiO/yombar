@@ -1,5 +1,4 @@
 use aes_kw::KekAes256;
-use base64ct::{Base64, Encoding};
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
@@ -50,24 +49,19 @@ impl MasterKey {
             .finalize()
             .into_bytes();
 
-        Ok(WrappedKey {
-            version: 999,
-            scrypt_salt: salt_string.to_string(),
-            scrypt_cost_param: 2_u32.pow(params.log_n() as u32),
-            scrypt_block_size: params.r(),
-            primary_master_key: Base64::encode_string(&wrapped_enc_master_key),
-            hmac_master_key: Base64::encode_string(&wrapped_mac_master_key),
-            version_mac: Base64::encode_string(&version_mac),
-        })
+        Ok(WrappedKey::new(
+            salt_string,
+            params,
+            wrapped_mac_master_key,
+            wrapped_mac_master_key,
+            version_mac.to_vec(),
+        ))
     }
 
-    pub fn from_wrapped(
-        wrapped_key: &WrappedKey,
-        kek: KekAes256,
-    ) -> Result<Self, KeyDecryptionError> {
+    pub fn from_wrapped(wrapped_key: &WrappedKey, kek: KekAes256) -> Result<Self, aes_kw::Error> {
         let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
-        kek.unwrap(&wrapped_key.enc_key()?, &mut buffer[0..SUBKEY_LENGTH])?;
-        kek.unwrap(&wrapped_key.mac_key()?, &mut buffer[SUBKEY_LENGTH..])?;
+        kek.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
+        kek.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
         Ok(Self(buffer))
     }
 

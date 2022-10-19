@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use base64ct::{Base64, Encoding};
 use scrypt::{
-    password_hash::{self, Salt},
+    password_hash::{Salt, SaltString},
     Params,
 };
 use serde::{Deserialize, Serialize};
@@ -12,40 +12,77 @@ use crate::error::*;
 // TODO: Validate/convert fields when serializing/deserializing
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RawWrappedKey {
+    version: u32,
+    scrypt_salt: String,
+    scrypt_cost_param: u32,
+    scrypt_block_size: u32,
+    primary_master_key: String,
+    hmac_master_key: String,
+    version_mac: String,
+}
+
 pub struct WrappedKey {
-    pub(crate) version: u32,
-    pub(crate) scrypt_salt: String,
-    pub(crate) scrypt_cost_param: u32,
-    pub(crate) scrypt_block_size: u32,
-    pub(crate) primary_master_key: String,
-    pub(crate) hmac_master_key: String,
-    pub(crate) version_mac: String,
+    scrypt_salt: SaltString,
+    scrypt_params: Params,
+    enc_key: Vec<u8>,
+    mac_key: Vec<u8>,
+    version_mac: Vec<u8>,
 }
 
 impl WrappedKey {
+    pub fn new(
+        scrypt_salt: impl Into<SaltString>,
+        scrypt_params: Params,
+        enc_key: impl Into<Vec<u8>>,
+        mac_key: impl Into<Vec<u8>>,
+        version_mac: impl Into<Vec<u8>>,
+    ) -> Self {
+        Self {
+            scrypt_salt: scrypt_salt.into(),
+            scrypt_params,
+            enc_key: enc_key.into(),
+            mac_key: mac_key.into(),
+            version_mac: version_mac.into(),
+        }
+    }
+
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, KeyFromFileError> {
         let json = fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&json)?)
+        let raw: RawWrappedKey = serde_json::from_str(&json)?;
+        let recommended_params = Params::recommended();
+
+        Ok(Self {
+            scrypt_salt: SaltString::new(&raw.scrypt_salt)?,
+            scrypt_params: Params::new(
+                // TODO: Use integer log once that's stabilized
+                (raw.scrypt_cost_param as f64).log2() as u8,
+                raw.scrypt_block_size,
+                recommended_params.p(),
+            )?,
+            enc_key: Base64::decode_vec(&raw.primary_master_key)?,
+            mac_key: Base64::decode_vec(&raw.hmac_master_key)?,
+            version_mac: Base64::decode_vec(&raw.hmac_master_key)?,
+        })
     }
 
-    pub fn salt(&self) -> Result<Salt, password_hash::Error> {
-        Salt::new(&self.scrypt_salt)
+    pub fn salt(&self) -> Salt {
+        self.scrypt_salt.as_salt()
     }
 
-    // TODO: Construct params from self
     pub fn params(&self) -> Params {
-        Params::recommended()
+        self.scrypt_params
     }
 
-    pub fn enc_key(&self) -> Result<Vec<u8>, base64ct::Error> {
-        Base64::decode_vec(&self.primary_master_key)
+    pub fn enc_key(&self) -> &[u8] {
+        &self.enc_key
     }
 
-    pub fn mac_key(&self) -> Result<Vec<u8>, base64ct::Error> {
-        Base64::decode_vec(&self.hmac_master_key)
+    pub fn mac_key(&self) -> &[u8] {
+        &self.mac_key
     }
 
-    pub fn version_mac(&self) -> Result<Vec<u8>, base64ct::Error> {
-        Base64::decode_vec(&self.version_mac)
+    pub fn version_mac(&self) -> &[u8] {
+        &self.version_mac
     }
 }

@@ -37,10 +37,7 @@ impl Vault {
     // 3. Derive a KEK with the password and scrypt parameters
     // 4. Use the KEK to unwrap the master key and decode/verify the config JWT
     // 5. (TODO?) Use the master key to check the format claim against the version HMAC
-    pub fn unlock(
-        config_path: impl AsRef<Path>,
-        password: String,
-    ) -> Result<Self, VaultUnlockError> {
+    pub fn open(config_path: impl AsRef<Path>, password: String) -> Result<Self, VaultUnlockError> {
         let jwt = fs::read_to_string(config_path)?;
         let header = jsonwebtoken::decode_header(&jwt)?;
         let master_key_uri = header.kid.ok_or(VaultUnlockError::JwtMissingKeyId)?;
@@ -48,7 +45,7 @@ impl Vault {
         if master_key_uri.starts_with("masterkeyfile:") {
             let key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
             let wrapped_key = WrappedKey::from_file(key_path)?;
-            let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt()?)?;
+            let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt())?;
             let master_key = MasterKey::from_wrapped(&wrapped_key, kek)?;
 
             let mut validation = Validation::new(header.alg);
@@ -56,11 +53,12 @@ impl Vault {
             validation.required_spec_claims.clear();
 
             let config: TokenData<VaultConfig> = master_key.verify_jwt(jwt, validation)?;
+
+            // TODO: Ensure vault format and cipher combo are supported
+
             Ok(Self { config, master_key })
         } else {
             todo!("only URIs starting with 'masterkeyfile:' are supported")
         }
     }
-
-    pub fn lock(self) {}
 }

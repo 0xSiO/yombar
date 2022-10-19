@@ -24,14 +24,12 @@ pub enum KeyFromFileError {
     ReadKeyFile(#[from] io::Error),
     #[error("failed to parse key file")]
     KeyParse(#[from] serde_json::Error),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum KeyDecryptionError {
-    #[error("failed to decode key")]
-    KeyDecode(#[from] base64ct::Error),
-    #[error("failed to unwrap key")]
-    AesKeyUnwrap(#[from] aes_kw::Error),
+    #[error("failed to parse scrypt salt")]
+    PasswordHash(#[from] password_hash::Error),
+    #[error("failed to extract scrypt parameters")]
+    InvalidScryptParams(#[from] scrypt::errors::InvalidParams),
+    #[error("failed to decode base64 string")]
+    Base64Decode(#[from] base64ct::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -44,11 +42,8 @@ pub enum VaultUnlockError {
     JwtMissingKeyId,
     #[error(transparent)]
     KeyFromFileError(#[from] KeyFromFileError),
-    // TODO: Get rid of this variant
-    #[error("failed to hash password")]
-    PasswordHash(#[from] password_hash::Error),
     #[error(transparent)]
     KekDerivation(#[from] KekDerivationError),
-    #[error("failed to decrypt master key")]
-    KeyDecryption(#[from] KeyDecryptionError),
+    #[error("failed to unwrap master key")]
+    KeyUnwrap(#[from] aes_kw::Error),
 }

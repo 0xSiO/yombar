@@ -64,7 +64,7 @@ impl MasterKey {
 
     pub fn unwrap(
         wrapped_key: &WrappedKey,
-        key_encryption_key: KekAes256,
+        key_encryption_key: &KekAes256,
     ) -> Result<Self, aes_kw::Error> {
         let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
         key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
@@ -126,7 +126,7 @@ mod tests {
             "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
         );
 
-        assert_eq!(MasterKey::unwrap(&wrapped_key, kek).unwrap(), key);
+        assert_eq!(MasterKey::unwrap(&wrapped_key, &kek).unwrap(), key);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -46,7 +46,7 @@ impl Vault {
             let key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
             let wrapped_key = WrappedKey::from_file(key_path)?;
             let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt())?;
-            let master_key = MasterKey::unwrap(&wrapped_key, kek)?;
+            let master_key = MasterKey::unwrap(&wrapped_key, &kek)?;
 
             let mut validation = Validation::new(header.alg);
             validation.validate_exp = false;

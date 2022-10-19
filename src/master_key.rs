@@ -15,7 +15,7 @@ use crate::wrapped_key::WrappedKey;
 
 pub const SUBKEY_LENGTH: usize = 32;
 
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey(pub(crate) [u8; SUBKEY_LENGTH * 2]);
 
 impl MasterKey {
@@ -33,16 +33,15 @@ impl MasterKey {
         &self.0[SUBKEY_LENGTH..]
     }
 
-    // TODO: Should we make this take &self?
     pub fn wrap(
-        self,
-        key_encryption_key: KekAes256,
+        &self,
+        key_encryption_key: &KekAes256,
+        scrypt_params: Params,
+        scrypt_salt: SaltString,
         format_version: u32,
     ) -> Result<WrappedKey, aes_kw::Error> {
         let mut wrapped_enc_master_key = [0_u8; SUBKEY_LENGTH + 8];
         let mut wrapped_mac_master_key = [0_u8; SUBKEY_LENGTH + 8];
-        let params = Params::recommended();
-        let salt_string = SaltString::generate(OsRng);
 
         key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
         key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
@@ -55,8 +54,8 @@ impl MasterKey {
             .into_bytes();
 
         Ok(WrappedKey {
-            scrypt_salt: salt_string,
-            scrypt_params: params,
+            scrypt_salt,
+            scrypt_params,
             enc_key: wrapped_enc_master_key.to_vec(),
             mac_key: wrapped_mac_master_key.to_vec(),
             version_mac: version_mac.to_vec(),
@@ -87,5 +86,44 @@ impl MasterKey {
         validation: Validation,
     ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
         jsonwebtoken::decode(&token, &DecodingKey::from_secret(&self.0), &validation)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64ct::{Base64, Encoding};
+
+    use crate::util;
+
+    use super::*;
+
+    #[test]
+    fn wrap_and_unwrap_test() {
+        let key_bytes = [[10; SUBKEY_LENGTH], [20; SUBKEY_LENGTH]].concat();
+        let key = MasterKey(key_bytes.try_into().unwrap());
+        let password = String::from("this is a test password");
+        let params = Params::recommended();
+        let salt_string = SaltString::new("lDDHfk5Y+elVtPi5STJrKw").unwrap();
+        let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
+        let wrapped_key = key.wrap(&kek, params, salt_string.clone(), 8).unwrap();
+
+        assert_eq!(wrapped_key.scrypt_salt, salt_string);
+        assert_eq!(wrapped_key.scrypt_params.log_n(), params.log_n());
+        assert_eq!(wrapped_key.scrypt_params.r(), params.r());
+        assert_eq!(wrapped_key.scrypt_params.p(), params.p());
+        assert_eq!(
+            Base64::encode_string(wrapped_key.enc_key()),
+            "SIUVZV/5Zq/o3M6o7TKVtUBBCnNS1gBw9vlEQxBzELT4JbjRNXHS2Q=="
+        );
+        assert_eq!(
+            Base64::encode_string(wrapped_key.mac_key()),
+            "QodpBW0JpLl9+oJHsRyz9+KGCerxetc9ddKkpI3efveRVZS85uMKRg=="
+        );
+        assert_eq!(
+            Base64::encode_string(wrapped_key.version_mac()),
+            "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
+        );
+
+        assert_eq!(MasterKey::unwrap(&wrapped_key, kek).unwrap(), key);
     }
 }

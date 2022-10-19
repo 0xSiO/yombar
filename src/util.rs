@@ -22,3 +22,24 @@ pub fn derive_kek(
     kek_bytes.copy_from_slice(password_hash.hash.unwrap().as_bytes());
     Ok(Kek::from(kek_bytes))
 }
+
+#[cfg(test)]
+mod tests {
+    use base64ct::{Base64, Encoding};
+    use scrypt::password_hash::SaltString;
+
+    use super::*;
+
+    #[test]
+    fn kek_derivation_test() {
+        let password = String::from("this is a test password");
+        let salt_string = SaltString::new("W3huAdpTVi9F+VAdJEKG2g").unwrap();
+        let kek = derive_kek(password, Params::recommended(), salt_string.as_salt()).unwrap();
+        let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+
+        assert_eq!(
+            Base64::encode_string(&wrapped_data),
+            "LcAc5FUpnDrComkVESnE8g=="
+        );
+    }
+}

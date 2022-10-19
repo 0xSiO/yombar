@@ -92,6 +92,8 @@ impl MasterKey {
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64, Encoding};
+    use jsonwebtoken::Algorithm;
+    use serde::Deserialize;
 
     use crate::util;
 
@@ -125,5 +127,39 @@ mod tests {
         );
 
         assert_eq!(MasterKey::unwrap(&wrapped_key, kek).unwrap(), key);
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct ExampleClaims {
+        one: u32,
+        two: bool,
+        three: String,
+    }
+
+    #[test]
+    fn sign_and_verify_jwt_test() {
+        let key_bytes = [[30; SUBKEY_LENGTH], [40; SUBKEY_LENGTH]].concat();
+        let key = MasterKey(key_bytes.try_into().unwrap());
+
+        let header = Header::new(Algorithm::HS256);
+        let claims = ExampleClaims {
+            one: 10,
+            two: false,
+            three: String::from("test"),
+        };
+
+        let jwt = key.sign_jwt(header.clone(), claims.clone()).unwrap();
+        assert_eq!(
+            jwt,
+            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvbmUiOjEwLCJ0d28iOmZhbHNlLCJ0aHJlZSI6InRlc3QifQ.RAy9PledsRNGbbxzAWdzWu6M-mEsz3RecHJiMM3FyTE"
+        );
+
+        let mut validation = Validation::new(header.alg);
+        validation.validate_exp = false;
+        validation.required_spec_claims.clear();
+        let verified: TokenData<ExampleClaims> = key.verify_jwt(jwt, validation).unwrap();
+
+        assert_eq!(verified.header, header);
+        assert_eq!(verified.claims, claims);
     }
 }

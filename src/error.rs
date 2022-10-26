@@ -2,6 +2,8 @@ use std::io;
 
 use scrypt::password_hash;
 
+use crate::CipherCombo;
+
 #[derive(Debug, thiserror::Error)]
 pub enum KeyFromFileError {
     #[error("failed to read key file")]
@@ -36,4 +38,8 @@ pub enum VaultUnlockError {
     KeyUnwrap(#[from] aes_kw::Error),
     #[error("unsupported key URI format: {0}")]
     UnsupportedKeyUri(String),
+    #[error("unsupported vault format: {0}")]
+    UnsupportedVaultFormat(u32),
+    #[error("supported cipher combo: {0:?}")]
+    UnsupportedCipherCombo(CipherCombo),
 }

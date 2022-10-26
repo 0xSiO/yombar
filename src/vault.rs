@@ -36,7 +36,6 @@ impl Vault {
     // 2. Load the wrapped master key and grab the scrypt parameters
     // 3. Derive a KEK with the password and scrypt parameters
     // 4. Use the KEK to unwrap the master key and decode/verify the config JWT
-    // 5. (TODO?) Use the master key to check the format claim against the version HMAC
     pub fn open(config_path: impl AsRef<Path>, password: String) -> Result<Self, VaultUnlockError> {
         let jwt = fs::read_to_string(config_path)?;
         let header = jsonwebtoken::decode_header(&jwt)?;
@@ -54,7 +53,18 @@ impl Vault {
 
             let config: TokenData<VaultConfig> = master_key.verify_jwt(jwt, validation)?;
 
-            // TODO: Ensure vault format and cipher combo are supported
+            // TODO: Only version 8 is supported for now
+            match config.claims.format {
+                8 => {}
+                other => return Err(VaultUnlockError::UnsupportedVaultFormat(other)),
+            }
+
+            // TODO: Only SIV+CTR+HMAC combo is supported for now
+            match config.claims.cipher_combo {
+                CipherCombo::SivCtrMac => {}
+                other => return Err(VaultUnlockError::UnsupportedCipherCombo(other)),
+            }
+
             Ok(Self { config, master_key })
         } else {
             Err(VaultUnlockError::UnsupportedKeyUri(master_key_uri))

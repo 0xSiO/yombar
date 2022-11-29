@@ -1,12 +1,11 @@
 use aes_kw::KekAes256;
-use hmac::{Hmac, Mac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rand_core::{self, OsRng, RngCore};
 use scrypt::{password_hash::SaltString, Params};
 use serde::{de::DeserializeOwned, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::wrapped_key::WrappedKey;
+use crate::{util, wrapped_key::WrappedKey};
 
 pub const SUBKEY_LENGTH: usize = 32;
 
@@ -41,19 +40,12 @@ impl MasterKey {
         key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
         key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
 
-        let version_mac = Hmac::<sha2::Sha256>::new_from_slice(self.mac_key())
-            // Ok to unwrap, HMAC can take keys of any size
-            .unwrap()
-            .chain_update(format_version.to_be_bytes())
-            .finalize()
-            .into_bytes();
-
         Ok(WrappedKey {
             scrypt_salt,
             scrypt_params,
             enc_key: wrapped_enc_master_key.to_vec(),
             mac_key: wrapped_mac_master_key.to_vec(),
-            version_mac: version_mac.to_vec(),
+            version_mac: util::hmac(&format_version.to_be_bytes(), self),
         })
     }
 

@@ -3,11 +3,9 @@ use aes::{
     Aes256,
 };
 use ctr::Ctr64LE;
-use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
-use sha2::Sha256;
 
-use crate::MasterKey;
+use crate::{util, MasterKey};
 
 use super::FileCryptor;
 
@@ -53,13 +51,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         cipher.apply_keystream(&mut header.payload);
         buffer.extend(header.payload);
 
-        let mac = Hmac::<Sha256>::new_from_slice(self.key.mac_key())
-            // Ok to unwrap, HMAC can take keys of any size
-            .unwrap()
-            .chain_update(&buffer)
-            .finalize()
-            .into_bytes();
-        buffer.extend(mac);
+        buffer.extend(util::hmac(&buffer, self.key));
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
 
@@ -74,14 +66,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         // First, verify the HMAC
 
         let (nonce_and_payload, expected_mac) = encrypted_header.split_at(HEADER_LEN);
-
-        let actual_mac = Hmac::<Sha256>::new_from_slice(self.key.mac_key())
-            // Ok to unwrap, HMAC can take keys of any size
-            .unwrap()
-            .chain_update(nonce_and_payload)
-            .finalize()
-            .into_bytes()
-            .to_vec();
+        let actual_mac = util::hmac(nonce_and_payload, self.key);
 
         if actual_mac != expected_mac {
             // TODO: Error
@@ -90,7 +75,6 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         // Next, decrypt the payload
 
         let (nonce, payload) = nonce_and_payload.split_at(NONCE_LEN);
-
         debug_assert_eq!(nonce.len(), NONCE_LEN);
         debug_assert_eq!(payload.len(), PAYLOAD_LEN);
 

@@ -1,11 +1,13 @@
 use aes_kw::{Kek, KekAes256};
+use hmac::{Hmac, Mac};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
+use sha2::Sha256;
 use zeroize::Zeroize;
 
-use crate::{error::*, master_key::SUBKEY_LENGTH};
+use crate::{error::*, master_key::SUBKEY_LENGTH, MasterKey};
 
 pub fn derive_kek(
     mut password: String,
@@ -21,6 +23,16 @@ pub fn derive_kek(
     let mut kek_bytes = [0_u8; SUBKEY_LENGTH];
     kek_bytes.copy_from_slice(password_hash.hash.unwrap().as_bytes());
     Ok(Kek::from(kek_bytes))
+}
+
+pub fn hmac(data: &[u8], key: &MasterKey) -> Vec<u8> {
+    Hmac::<Sha256>::new_from_slice(key.mac_key())
+        // Ok to unwrap, HMAC can take keys of any size
+        .unwrap()
+        .chain_update(data)
+        .finalize()
+        .into_bytes()
+        .to_vec()
 }
 
 #[cfg(test)]

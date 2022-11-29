@@ -54,4 +54,14 @@ mod tests {
             "LcAc5FUpnDrComkVESnE8g=="
         );
     }
+
+    #[test]
+    fn hmac_test() {
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes([15_u8; SUBKEY_LENGTH * 2]) };
+        assert_eq!(
+            Base64::encode_string(&hmac(b"here is some data", &key)),
+            "CWTyTEOJ2pDGgMpGjHgQV8T+EjEJYliXRQL2XzgT1W0="
+        );
+    }
 }

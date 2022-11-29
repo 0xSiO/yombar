@@ -19,6 +19,15 @@ impl MasterKey {
         Ok(key)
     }
 
+    /// Create a [MasterKey] from the provided byte array.
+    ///
+    /// # Safety
+    ///
+    /// - `bytes` should contain secret, random bytes with sufficient entropy
+    pub unsafe fn from_bytes(bytes: [u8; SUBKEY_LENGTH * 2]) -> Self {
+        MasterKey(bytes)
+    }
+
     pub(crate) fn enc_key(&self) -> &[u8] {
         &self.0[0..SUBKEY_LENGTH]
     }

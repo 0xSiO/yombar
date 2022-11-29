@@ -16,7 +16,7 @@ use crate::wrapped_key::WrappedKey;
 pub const SUBKEY_LENGTH: usize = 32;
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct MasterKey(pub(crate) [u8; SUBKEY_LENGTH * 2]);
+pub struct MasterKey([u8; SUBKEY_LENGTH * 2]);
 
 impl MasterKey {
     pub fn new() -> Result<Self, rand_core::Error> {

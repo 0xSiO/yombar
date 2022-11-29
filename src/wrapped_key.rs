@@ -46,7 +46,7 @@ impl WrappedKey {
             )?,
             enc_key: Base64::decode_vec(&raw.primary_master_key)?,
             mac_key: Base64::decode_vec(&raw.hmac_master_key)?,
-            version_mac: Base64::decode_vec(&raw.hmac_master_key)?,
+            version_mac: Base64::decode_vec(&raw.version_mac)?,
         })
     }
 

@@ -31,6 +31,15 @@ pub struct Vault {
 }
 
 impl Vault {
+    // TODO: New vaults require the following:
+    // - name
+    // - location
+    // - password -> master key
+    //
+    // Optional: generate a recovery key
+    //
+    // pub fn create() -> Result<Self, VaultCreateError> {}
+
     // Unlock procedure is as follows:
     // 1. Decode the config JWT header to get the master key URI
     // 2. Load the wrapped master key and grab the scrypt parameters

@@ -1,13 +1,8 @@
 use aes_kw::KekAes256;
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
-use scrypt::{
-    password_hash::{
-        rand_core::{self, OsRng, RngCore},
-        SaltString,
-    },
-    Params,
-};
+use rand_core::{self, OsRng, RngCore};
+use scrypt::{password_hash::SaltString, Params};
 use serde::{de::DeserializeOwned, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -25,11 +20,11 @@ impl MasterKey {
         Ok(key)
     }
 
-    fn enc_key(&self) -> &[u8] {
+    pub(crate) fn enc_key(&self) -> &[u8] {
         &self.0[0..SUBKEY_LENGTH]
     }
 
-    fn mac_key(&self) -> &[u8] {
+    pub(crate) fn mac_key(&self) -> &[u8] {
         &self.0[SUBKEY_LENGTH..]
     }
 

@@ -3,9 +3,11 @@ use aes::{
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
+use base32ct::{Base32, Encoding};
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
+use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -65,7 +67,7 @@ impl<'k> Cryptor<'k> {
         data
     }
 
-    fn aes_siv(&self, data: &[u8], associated_data: &[u8]) -> Result<Vec<u8>, aes_siv::Error> {
+    fn aes_siv_encrypt(&self, data: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and master key
@@ -74,7 +76,10 @@ impl<'k> Cryptor<'k> {
             .try_into()
             .unwrap();
 
-        Aes256Siv::new(&key.into()).encrypt([associated_data], data)
+        // Seems okay to unwrap here, I can't find any input data where it panics
+        Aes256Siv::new(&key.into())
+            .encrypt([associated_data], data)
+            .unwrap()
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
@@ -164,11 +169,17 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         self.aes_ctr(nonce, chunk)
     }
 
-    fn encrypt_name(name: String, data: Vec<u8>) -> Vec<u8> {
+    fn hash_dir_id(&self, dir_id: String) -> String {
+        let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[]);
+        let hash = Sha1::new().chain_update(ciphertext).finalize();
+        Base32::encode_string(&hash).to_ascii_uppercase()
+    }
+
+    fn encrypt_name(&self, name: String, parent_dir_id: String) -> Vec<u8> {
         todo!()
     }
 
-    fn decrypt_name(encrypted_name: String, data: Vec<u8>) -> String {
+    fn decrypt_name(&self, encrypted_name: String, parent_dir_id: String) -> String {
         todo!()
     }
 }
@@ -210,5 +221,17 @@ mod tests {
         let ciphertext = cryptor.encrypt_chunk(chunk.clone(), &header, 2);
         assert_eq!(Base64::encode_string(&ciphertext), "ExMTExMTExMTExMTExMTExkKl5K4v0aLiTHQzjfbbG/aBKr9zewZUZbh7tCdbe6ObxsWu2s9voOZzef4nSoxAeXX2wBFQCd2KSr3ksYjzJFFLxyz85hUzXbDfQ==");
         assert_eq!(cryptor.decrypt_chunk(ciphertext, &header, 2), chunk);
+    }
+
+    #[test]
+    fn dir_id_hash_test() {
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes([193_u8; SUBKEY_LENGTH * 2]) };
+        let cryptor = Cryptor::new(&key);
+
+        assert_eq!(
+            cryptor.hash_dir_id(String::from("1ea7beac-ec4e-4fd7-8b77-07b79c2e7864")),
+            "N7LRT3C5NDVBB5356OJN32RP2MDD4RIH"
+        );
     }
 }

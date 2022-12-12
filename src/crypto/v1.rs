@@ -2,7 +2,7 @@ use aes::{
     cipher::{KeyIvInit, StreamCipher},
     Aes256,
 };
-use ctr::Ctr64LE;
+use ctr::Ctr128BE;
 use rand_core::{self, OsRng, RngCore};
 
 use crate::{util, MasterKey};
@@ -17,7 +17,8 @@ const PAYLOAD_LEN: usize = RESERVED_LEN + CONTENT_KEY_LEN;
 const HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN;
 const ENCRYPTED_HEADER_LEN: usize = HEADER_LEN + MAC_LEN;
 
-struct FileHeader {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FileHeader {
     nonce: [u8; NONCE_LEN],
     payload: [u8; PAYLOAD_LEN],
 }
@@ -37,8 +38,14 @@ impl super::FileHeader for FileHeader {
     }
 }
 
-struct Cryptor<'k> {
+pub struct Cryptor<'k> {
     key: &'k MasterKey,
+}
+
+impl<'k> Cryptor<'k> {
+    pub fn new(key: &'k MasterKey) -> Self {
+        Self { key }
+    }
 }
 
 impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
@@ -46,8 +53,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
 
-        // TODO: Confirm whether this the correct counter type and key size
-        let mut cipher = Ctr64LE::<Aes256>::new(self.key.enc_key().into(), &header.nonce.into());
+        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &header.nonce.into());
         cipher.apply_keystream(&mut header.payload);
         buffer.extend(header.payload);
 
@@ -82,9 +88,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
         let mut payload: [u8; PAYLOAD_LEN] = payload.try_into().unwrap();
 
-        // TODO: Confirm whether this the correct counter type and key size
-        let mut cipher = Ctr64LE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
-        // TODO: Does this work for decrypting the ciphertext?
+        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
         cipher.apply_keystream(&mut payload);
 
         FileHeader { nonce, payload }
@@ -104,5 +108,29 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
     fn decrypt_name(ciphertext_name: String, data: Vec<u8>) -> String {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64ct::{Base64, Encoding};
+
+    use crate::master_key::SUBKEY_LENGTH;
+
+    use super::*;
+
+    #[test]
+    fn file_header_test() {
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes([12_u8; SUBKEY_LENGTH * 2]) };
+        let cryptor = Cryptor::new(&key);
+        let header = FileHeader {
+            nonce: [9; NONCE_LEN],
+            payload: [2; PAYLOAD_LEN],
+        };
+
+        let ciphertext = cryptor.encrypt_header(header.clone());
+        assert_eq!(Base64::encode_string(&ciphertext), "CQkJCQkJCQkJCQkJCQkJCbLKvhHVpdx6zpp+DCYeHQbzlREdVyMvQODun2plN9x6WRVW6IIIbrg4FwObxUUOzEgfvVvBAzIGOMXnFHGSjVP5fNWJYI+TVA==");
+        assert_eq!(cryptor.decrypt_header(ciphertext), header);
     }
 }

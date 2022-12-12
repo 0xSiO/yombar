@@ -2,12 +2,14 @@ use aes::{
     cipher::{KeyIvInit, StreamCipher},
     Aes256,
 };
+use aes_siv::siv::Aes256Siv;
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
 use sha2::Sha256;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{util, MasterKey};
+use crate::{master_key::SUBKEY_LENGTH, util, MasterKey};
 
 use super::FileCryptor;
 
@@ -25,7 +27,7 @@ const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + MAC_LEN;
 const CHUNK_LEN: usize = 32 * 1024;
 const ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + CHUNK_LEN + MAC_LEN;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct FileHeader {
     nonce: [u8; NONCE_LEN],
     payload: [u8; PAYLOAD_LEN],
@@ -55,9 +57,24 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(&self, data: &mut [u8], nonce: [u8; NONCE_LEN]) {
-        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
-        cipher.apply_keystream(data);
+    fn aes_ctr(&self, nonce: [u8; NONCE_LEN], data: &[u8]) -> Vec<u8> {
+        let mut data = data.to_vec();
+        Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into())
+            .apply_keystream(&mut data);
+
+        data
+    }
+
+    fn aes_siv(&self, data: &[u8], associated_data: &[u8]) -> Result<Vec<u8>, aes_siv::Error> {
+        use aes_siv::KeyInit;
+
+        // AES-SIV takes both the encryption key and master key
+        let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
+            .concat()
+            .try_into()
+            .unwrap();
+
+        Aes256Siv::new(&key.into()).encrypt([associated_data], data)
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
@@ -74,13 +91,10 @@ impl<'k> Cryptor<'k> {
 }
 
 impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
-    fn encrypt_header(&self, mut header: FileHeader) -> Vec<u8> {
+    fn encrypt_header(&self, header: FileHeader) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
-
-        self.aes_ctr(&mut header.payload, header.nonce);
-        buffer.extend(header.payload);
-
+        buffer.extend(self.aes_ctr(header.nonce, &header.payload));
         buffer.extend(util::hmac(&buffer, self.key));
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
@@ -101,30 +115,21 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
         // Next, decrypt the payload
         let (nonce, payload) = nonce_and_payload.split_at(NONCE_LEN);
+        // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-        let mut payload: [u8; PAYLOAD_LEN] = payload.try_into().unwrap();
-
-        self.aes_ctr(&mut payload, nonce);
+        let payload: [u8; PAYLOAD_LEN] = self.aes_ctr(nonce, payload).try_into().unwrap();
 
         FileHeader { nonce, payload }
     }
 
-    fn encrypt_chunk(
-        &self,
-        mut chunk: Vec<u8>,
-        header: &FileHeader,
-        chunk_number: usize,
-    ) -> Vec<u8> {
+    fn encrypt_chunk(&self, chunk: Vec<u8>, header: &FileHeader, chunk_number: usize) -> Vec<u8> {
         if chunk.is_empty() || chunk.len() > CHUNK_LEN {
             // TODO: Error
         }
 
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(header.nonce);
-
-        self.aes_ctr(&mut chunk, header.nonce);
-        buffer.extend(chunk);
-
+        buffer.extend(self.aes_ctr(header.nonce, &chunk));
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
         debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
@@ -153,12 +158,10 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
         // Next, decrypt the chunk
         let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
+        // Ok to convert to sized array - we know the length at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-        let mut chunk = chunk.to_vec();
 
-        self.aes_ctr(&mut chunk, nonce);
-
-        chunk
+        self.aes_ctr(nonce, chunk)
     }
 
     fn encrypt_name(name: String, data: Vec<u8>) -> Vec<u8> {

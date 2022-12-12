@@ -55,6 +55,11 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
+    fn aes_ctr(&self, data: &mut [u8], nonce: [u8; NONCE_LEN]) {
+        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
+        cipher.apply_keystream(data);
+    }
+
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
         Hmac::<Sha256>::new_from_slice(self.key.mac_key())
             // ok to unwrap, hmac can take keys of any size
@@ -73,8 +78,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
 
-        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &header.nonce.into());
-        cipher.apply_keystream(&mut header.payload);
+        self.aes_ctr(&mut header.payload, header.nonce);
         buffer.extend(header.payload);
 
         buffer.extend(util::hmac(&buffer, self.key));
@@ -90,24 +94,17 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         }
 
         // First, verify the HMAC
-
         let (nonce_and_payload, expected_mac) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
-        let actual_mac = util::hmac(nonce_and_payload, self.key);
-
-        if actual_mac != expected_mac {
+        if util::hmac(nonce_and_payload, self.key) != expected_mac {
             // TODO: Error
         }
 
         // Next, decrypt the payload
-
         let (nonce, payload) = nonce_and_payload.split_at(NONCE_LEN);
-        debug_assert_eq!(nonce.len(), NONCE_LEN);
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-        debug_assert_eq!(payload.len(), PAYLOAD_LEN);
         let mut payload: [u8; PAYLOAD_LEN] = payload.try_into().unwrap();
 
-        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
-        cipher.apply_keystream(&mut payload);
+        self.aes_ctr(&mut payload, nonce);
 
         FileHeader { nonce, payload }
     }
@@ -118,15 +115,14 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         header: &FileHeader,
         chunk_number: usize,
     ) -> Vec<u8> {
-        if chunk.len() > CHUNK_LEN {
+        if chunk.is_empty() || chunk.len() > CHUNK_LEN {
             // TODO: Error
         }
 
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(header.nonce);
 
-        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &header.nonce.into());
-        cipher.apply_keystream(&mut chunk);
+        self.aes_ctr(&mut chunk, header.nonce);
         buffer.extend(chunk);
 
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
@@ -142,33 +138,25 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         header: &FileHeader,
         chunk_number: usize,
     ) -> Vec<u8> {
-        if encrypted_chunk.len() > ENCRYPTED_CHUNK_LEN {
-            // TODO: Error
-        }
-
-        if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN {
+        if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
+            || encrypted_chunk.len() > ENCRYPTED_CHUNK_LEN
+        {
             // TODO: Error
         }
 
         // First, verify the HMAC
-
         let (nonce_and_chunk, expected_mac) =
             encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
-        let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
-
-        if actual_mac != expected_mac {
+        if self.chunk_hmac(nonce_and_chunk, header, chunk_number) != expected_mac {
             // TODO: Error
         }
 
         // Next, decrypt the chunk
-
         let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
-        debug_assert_eq!(nonce.len(), NONCE_LEN);
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
         let mut chunk = chunk.to_vec();
 
-        let mut cipher = Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into());
-        cipher.apply_keystream(&mut chunk);
+        self.aes_ctr(&mut chunk, nonce);
 
         chunk
     }

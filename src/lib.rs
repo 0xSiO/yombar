@@ -1,4 +1,4 @@
-mod crypto;
+pub mod crypto;
 pub mod error;
 mod master_key;
 pub mod util;

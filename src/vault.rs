@@ -25,6 +25,7 @@ pub struct VaultConfig {
     pub cipher_combo: CipherCombo,
 }
 
+#[allow(dead_code)]
 pub struct Vault {
     config: TokenData<VaultConfig>,
     master_key: MasterKey,

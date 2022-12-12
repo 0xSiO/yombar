@@ -47,12 +47,14 @@ impl Vault {
     // 3. Derive a KEK with the password and scrypt parameters
     // 4. Use the KEK to unwrap the master key and decode/verify the config JWT
     pub fn open(config_path: impl AsRef<Path>, password: String) -> Result<Self, VaultUnlockError> {
-        let jwt = fs::read_to_string(config_path)?;
+        let jwt = fs::read_to_string(&config_path)?;
         let header = jsonwebtoken::decode_header(&jwt)?;
         let master_key_uri = header.kid.ok_or(VaultUnlockError::JwtMissingKeyId)?;
 
         if master_key_uri.starts_with("masterkeyfile:") {
-            let key_path = master_key_uri.split_once("masterkeyfile:").unwrap().1;
+            // TODO: Handle case with no parent?
+            let config_dir = config_path.as_ref().parent().unwrap();
+            let key_path = config_dir.join(master_key_uri.split_once("masterkeyfile:").unwrap().1);
             let wrapped_key = WrappedKey::from_file(key_path)?;
             let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt())?;
             let master_key = MasterKey::unwrap(&wrapped_key, &kek)?;

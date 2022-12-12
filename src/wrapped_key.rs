@@ -35,9 +35,10 @@ impl WrappedKey {
         let json = fs::read_to_string(path)?;
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
         let recommended_params = Params::recommended();
+        let salt_no_padding = raw.scrypt_salt.replace('=', "");
 
         Ok(Self {
-            scrypt_salt: SaltString::new(&raw.scrypt_salt)?,
+            scrypt_salt: SaltString::new(&salt_no_padding)?,
             scrypt_params: Params::new(
                 // TODO: Use integer log once that's stabilized
                 (raw.scrypt_cost_param as f64).log2() as u8,

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+
+    name: Rust ${{ matrix.rust }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: cargo test --all-features
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features
+
+      - name: cargo test --all-features -- --ignored
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features -- --ignored
+
+      - name: cargo fmt --all -- --check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: cargo clippy -- -D warnings
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings

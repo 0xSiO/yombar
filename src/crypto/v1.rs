@@ -3,7 +3,8 @@ use aes::{
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
-use base32ct::{Base32, Encoding};
+use base32ct::{Base32, Encoding as Base32Encoding};
+use base64ct::{Base64, Encoding as Base64Encoding};
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
@@ -59,15 +60,15 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(&self, nonce: [u8; NONCE_LEN], data: &[u8]) -> Vec<u8> {
-        let mut data = data.to_vec();
+    fn aes_ctr(&self, nonce: [u8; NONCE_LEN], message: &[u8]) -> Vec<u8> {
+        let mut message = message.to_vec();
         Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into())
-            .apply_keystream(&mut data);
+            .apply_keystream(&mut message);
 
-        data
+        message
     }
 
-    fn aes_siv_encrypt(&self, data: &[u8], associated_data: &[u8]) -> Vec<u8> {
+    fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and master key
@@ -78,7 +79,22 @@ impl<'k> Cryptor<'k> {
 
         // Seems okay to unwrap here, I can't find any input data where it panics
         Aes256Siv::new(&key.into())
-            .encrypt([associated_data], data)
+            .encrypt([associated_data], plaintext)
+            .unwrap()
+    }
+
+    fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[u8]) -> Vec<u8> {
+        use aes_siv::KeyInit;
+
+        // AES-SIV takes both the encryption key and master key
+        let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
+            .concat()
+            .try_into()
+            .unwrap();
+
+        // TODO: Handle decryption error
+        Aes256Siv::new(&key.into())
+            .decrypt([associated_data], ciphertext)
             .unwrap()
     }
 
@@ -169,27 +185,26 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         self.aes_ctr(nonce, chunk)
     }
 
-    fn hash_dir_id(&self, dir_id: String) -> String {
+    fn hash_dir_id(&self, dir_id: &str) -> String {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[]);
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         Base32::encode_string(&hash).to_ascii_uppercase()
     }
 
-    fn encrypt_name(&self, name: String, parent_dir_id: String) -> Vec<u8> {
-        todo!()
+    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> String {
+        Base64::encode_string(&self.aes_siv_encrypt(name.as_bytes(), parent_dir_id.as_bytes()))
     }
 
-    fn decrypt_name(&self, encrypted_name: String, parent_dir_id: String) -> String {
-        todo!()
+    fn decrypt_name(&self, encrypted_name: &str, parent_dir_id: &str) -> String {
+        // TODO: Handle decode error
+        let ciphertext = Base64::decode_vec(encrypted_name).unwrap();
+        // TODO: Can we assume the decrypted bytes are valid UTF-8?
+        String::from_utf8(self.aes_siv_decrypt(&ciphertext, parent_dir_id.as_bytes())).unwrap()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use base64ct::{Base64, Encoding};
-
-    use crate::master_key::SUBKEY_LENGTH;
-
     use super::*;
 
     #[test]
@@ -230,8 +245,24 @@ mod tests {
         let cryptor = Cryptor::new(&key);
 
         assert_eq!(
-            cryptor.hash_dir_id(String::from("1ea7beac-ec4e-4fd7-8b77-07b79c2e7864")),
+            cryptor.hash_dir_id("1ea7beac-ec4e-4fd7-8b77-07b79c2e7864"),
             "N7LRT3C5NDVBB5356OJN32RP2MDD4RIH"
         );
+    }
+
+    #[test]
+    fn file_name_test() {
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes([53_u8; SUBKEY_LENGTH * 2]) };
+        let cryptor = Cryptor::new(&key);
+        let name = "example_file_name.txt";
+        let dir_id = "b77a03f6-d561-482e-95ff-97d01a9ea26b";
+
+        let ciphertext = cryptor.encrypt_name(name, dir_id);
+        assert_eq!(
+            ciphertext,
+            "WpmIYies2GhYC3gYZHOaUd76c3gp6VHLmFWy+7xWmDEQK19fEw=="
+        );
+        assert_eq!(cryptor.decrypt_name(&ciphertext, dir_id), name);
     }
 }

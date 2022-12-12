@@ -17,9 +17,9 @@ pub trait FileCryptor<H: FileHeader> {
 
     fn decrypt_chunk(&self, encrypted_chunk: Vec<u8>, header: &H, chunk_number: usize) -> Vec<u8>;
 
-    fn hash_dir_id(&self, dir_id: String) -> String;
+    fn hash_dir_id(&self, dir_id: &str) -> String;
 
-    fn encrypt_name(&self, name: String, parent_dir_id: String) -> Vec<u8>;
+    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> String;
 
-    fn decrypt_name(&self, encrypted_name: String, parent_dir_id: String) -> String;
+    fn decrypt_name(&self, encrypted_name: &str, parent_dir_id: &str) -> String;
 }

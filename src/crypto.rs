@@ -1,5 +1,6 @@
 pub mod v1;
 
+// TODO: Do all versions share a common header interface? Add missing methods if so
 pub trait FileHeader
 where
     Self: Sized,
@@ -7,10 +8,10 @@ where
     fn new() -> Result<Self, rand_core::Error>;
 }
 
+// TODO: Return result where needed
 pub trait FileCryptor<H: FileHeader> {
     fn encrypt_header(&self, header: H) -> Vec<u8>;
 
-    // TODO: Return Result
     fn decrypt_header(&self, encrypted_header: Vec<u8>) -> H;
 
     fn encrypt_chunk(&self, chunk: Vec<u8>, header: &H, chunk_number: usize) -> Vec<u8>;

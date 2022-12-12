@@ -13,9 +13,9 @@ pub trait FileCryptor<H: FileHeader> {
     // TODO: Return Result
     fn decrypt_header(&self, encrypted_header: Vec<u8>) -> H;
 
-    fn encrypt_chunk(header: H, cleartext: Vec<u8>, chunk_number: usize) -> Vec<u8>;
+    fn encrypt_chunk(&self, header: &H, cleartext: Vec<u8>, chunk_number: usize) -> Vec<u8>;
 
-    fn decrypt_chunk(header: H, ciphertext: Vec<u8>, chunk_number: usize) -> Vec<u8>;
+    fn decrypt_chunk(&self, header: &H, ciphertext: Vec<u8>, chunk_number: usize) -> Vec<u8>;
 
     fn encrypt_name(cleartext_name: String, data: Vec<u8>) -> Vec<u8>;
 

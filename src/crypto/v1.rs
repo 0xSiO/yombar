@@ -55,7 +55,7 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn chunk_hmac(&self, header: &FileHeader, data: &[u8], chunk_number: usize) -> Vec<u8> {
+    fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
         Hmac::<Sha256>::new_from_slice(self.key.mac_key())
             // ok to unwrap, hmac can take keys of any size
             .unwrap()
@@ -114,8 +114,8 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
     fn encrypt_chunk(
         &self,
-        header: &FileHeader,
         mut chunk: Vec<u8>,
+        header: &FileHeader,
         chunk_number: usize,
     ) -> Vec<u8> {
         if chunk.len() > CHUNK_LEN {
@@ -129,7 +129,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         cipher.apply_keystream(&mut chunk);
         buffer.extend(chunk);
 
-        buffer.extend(self.chunk_hmac(header, &buffer, chunk_number));
+        buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
         debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
 
@@ -138,8 +138,8 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
     fn decrypt_chunk(
         &self,
-        header: &FileHeader,
         encrypted_chunk: Vec<u8>,
+        header: &FileHeader,
         chunk_number: usize,
     ) -> Vec<u8> {
         if encrypted_chunk.len() > ENCRYPTED_CHUNK_LEN {
@@ -154,7 +154,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
         let (nonce_and_chunk, expected_mac) =
             encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
-        let actual_mac = self.chunk_hmac(header, nonce_and_chunk, chunk_number);
+        let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
 
         if actual_mac != expected_mac {
             // TODO: Error
@@ -173,11 +173,11 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         chunk
     }
 
-    fn encrypt_name(cleartext_name: String, data: Vec<u8>) -> Vec<u8> {
+    fn encrypt_name(name: String, data: Vec<u8>) -> Vec<u8> {
         todo!()
     }
 
-    fn decrypt_name(ciphertext_name: String, data: Vec<u8>) -> String {
+    fn decrypt_name(encrypted_name: String, data: Vec<u8>) -> String {
         todo!()
     }
 }
@@ -216,8 +216,8 @@ mod tests {
         };
         let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
 
-        let ciphertext = cryptor.encrypt_chunk(&header, chunk.clone(), 2);
+        let ciphertext = cryptor.encrypt_chunk(chunk.clone(), &header, 2);
         assert_eq!(Base64::encode_string(&ciphertext), "ExMTExMTExMTExMTExMTExkKl5K4v0aLiTHQzjfbbG/aBKr9zewZUZbh7tCdbe6ObxsWu2s9voOZzef4nSoxAeXX2wBFQCd2KSr3ksYjzJFFLxyz85hUzXbDfQ==");
-        assert_eq!(cryptor.decrypt_chunk(&header, ciphertext, 2), chunk);
+        assert_eq!(cryptor.decrypt_chunk(ciphertext, &header, 2), chunk);
     }
 }

@@ -43,6 +43,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
         let salt_string = SaltString::new("W3huAdpTVi9F+VAdJEKG2g").unwrap();

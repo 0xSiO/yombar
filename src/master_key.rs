@@ -96,6 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn wrap_and_unwrap_test() {
         let key_bytes = [[10; SUBKEY_LENGTH], [20; SUBKEY_LENGTH]].concat();
         let key = MasterKey(key_bytes.try_into().unwrap());

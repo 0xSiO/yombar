@@ -63,12 +63,13 @@ mod tests {
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
         let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
-        let kek = derive_kek(password, Params::recommended(), salt_string.as_salt()).unwrap();
+        let params = Params::new(15, 8, 1, SUBKEY_LENGTH).unwrap();
+        let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
         assert_eq!(
             Base64::encode_string(&wrapped_data),
-            "o0U9lG3iFzFJ9WylX5/YgQ=="
+            "Rf3TWtT0Rz9WDIMD3+26pA=="
         );
     }
 

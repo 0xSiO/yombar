@@ -1,8 +1,6 @@
 use aes_kw::KekAes256;
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rand_core::{self, OsRng, RngCore};
 use scrypt::{password_hash::SaltString, Params};
-use serde::{de::DeserializeOwned, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{util, wrapped_key::WrappedKey};
@@ -36,6 +34,10 @@ impl MasterKey {
         &self.0[SUBKEY_LENGTH..]
     }
 
+    pub(crate) fn raw_key(&self) -> &[u8] {
+        &self.0
+    }
+
     pub fn wrap(
         &self,
         key_encryption_key: &KekAes256,
@@ -58,7 +60,7 @@ impl MasterKey {
         })
     }
 
-    pub fn unwrap(
+    pub fn from_wrapped(
         wrapped_key: &WrappedKey,
         key_encryption_key: &KekAes256,
     ) -> Result<Self, aes_kw::Error> {
@@ -67,29 +69,11 @@ impl MasterKey {
         key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
         Ok(MasterKey(buffer))
     }
-
-    pub fn sign_jwt(
-        &self,
-        header: Header,
-        claims: impl Serialize,
-    ) -> Result<String, jsonwebtoken::errors::Error> {
-        jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(&self.0))
-    }
-
-    pub fn verify_jwt<T: DeserializeOwned>(
-        &self,
-        token: String,
-        validation: Validation,
-    ) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-        jsonwebtoken::decode(&token, &DecodingKey::from_secret(&self.0), &validation)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64, Encoding};
-    use jsonwebtoken::Algorithm;
-    use serde::Deserialize;
 
     use crate::util;
 
@@ -123,40 +107,6 @@ mod tests {
             "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
         );
 
-        assert_eq!(MasterKey::unwrap(&wrapped_key, &kek).unwrap(), key);
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    struct ExampleClaims {
-        one: u32,
-        two: bool,
-        three: String,
-    }
-
-    #[test]
-    fn sign_and_verify_jwt_test() {
-        let key_bytes = [[30; SUBKEY_LENGTH], [40; SUBKEY_LENGTH]].concat();
-        let key = MasterKey(key_bytes.try_into().unwrap());
-
-        let header = Header::new(Algorithm::HS256);
-        let claims = ExampleClaims {
-            one: 10,
-            two: false,
-            three: String::from("test"),
-        };
-
-        let jwt = key.sign_jwt(header.clone(), claims.clone()).unwrap();
-        assert_eq!(
-            jwt,
-            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvbmUiOjEwLCJ0d28iOmZhbHNlLCJ0aHJlZSI6InRlc3QifQ.RAy9PledsRNGbbxzAWdzWu6M-mEsz3RecHJiMM3FyTE"
-        );
-
-        let mut validation = Validation::new(header.alg);
-        validation.validate_exp = false;
-        validation.required_spec_claims.clear();
-        let verified: TokenData<ExampleClaims> = key.verify_jwt(jwt, validation).unwrap();
-
-        assert_eq!(verified.header, header);
-        assert_eq!(verified.claims, claims);
+        assert_eq!(MasterKey::from_wrapped(&wrapped_key, &kek).unwrap(), key);
     }
 }

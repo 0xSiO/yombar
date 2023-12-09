@@ -1,9 +1,11 @@
 use aes_kw::{Kek, KekAes256};
 use hmac::{Hmac, Mac};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
@@ -35,10 +37,32 @@ pub fn hmac(data: &[u8], key: &MasterKey) -> Vec<u8> {
         .to_vec()
 }
 
+pub fn sign_jwt(
+    header: Header,
+    claims: impl Serialize,
+    key: &MasterKey,
+) -> Result<String, jsonwebtoken::errors::Error> {
+    jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(key.raw_key()))
+}
+
+pub fn verify_jwt<T: DeserializeOwned>(
+    token: String,
+    validation: Validation,
+    key: &MasterKey,
+) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
+    jsonwebtoken::decode(
+        &token,
+        &DecodingKey::from_secret(key.raw_key()),
+        &validation,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64, Encoding};
+    use jsonwebtoken::Algorithm;
     use scrypt::password_hash::SaltString;
+    use serde::Deserialize;
 
     use super::*;
 
@@ -81,5 +105,40 @@ mod tests {
             Base64::encode_string(&hmac(b"here is some data", &key)),
             "CWTyTEOJ2pDGgMpGjHgQV8T+EjEJYliXRQL2XzgT1W0="
         );
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct ExampleClaims {
+        one: u32,
+        two: bool,
+        three: String,
+    }
+
+    #[test]
+    fn sign_and_verify_jwt_test() {
+        let key_bytes = [[30; SUBKEY_LENGTH], [40; SUBKEY_LENGTH]].concat();
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes(key_bytes.try_into().unwrap()) };
+
+        let header = Header::new(Algorithm::HS256);
+        let claims = ExampleClaims {
+            one: 10,
+            two: false,
+            three: String::from("test"),
+        };
+
+        let jwt = sign_jwt(header.clone(), claims.clone(), &key).unwrap();
+        assert_eq!(
+            jwt,
+            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvbmUiOjEwLCJ0d28iOmZhbHNlLCJ0aHJlZSI6InRlc3QifQ.RAy9PledsRNGbbxzAWdzWu6M-mEsz3RecHJiMM3FyTE"
+        );
+
+        let mut validation = Validation::new(header.alg);
+        validation.validate_exp = false;
+        validation.required_spec_claims.clear();
+        let verified: TokenData<ExampleClaims> = verify_jwt(jwt, validation, &key).unwrap();
+
+        assert_eq!(verified.header, header);
+        assert_eq!(verified.claims, claims);
     }
 }

@@ -71,7 +71,7 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and master key
+        // AES-SIV takes both the encryption key and mac key
         let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
             .concat()
             .try_into()
@@ -86,7 +86,7 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and master key
+        // AES-SIV takes both the encryption key and mac key
         let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
             .concat()
             .try_into()

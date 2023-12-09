@@ -40,8 +40,7 @@ impl WrappedKey {
         Ok(Self {
             scrypt_salt: SaltString::new(&salt_no_padding)?,
             scrypt_params: Params::new(
-                // TODO: Use integer log once that's stabilized
-                (raw.scrypt_cost_param as f64).log2() as u8,
+                raw.scrypt_cost_param.ilog2() as u8,
                 raw.scrypt_block_size,
                 recommended_params.p(),
             )?,

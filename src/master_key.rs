@@ -102,7 +102,7 @@ mod tests {
         let key = MasterKey(key_bytes.try_into().unwrap());
         let password = String::from("this is a test password");
         let params = Params::recommended();
-        let salt_string = SaltString::new("lDDHfk5Y+elVtPi5STJrKw").unwrap();
+        let salt_string = SaltString::from_b64("lDDHfk5Y+elVtPi5STJrKw").unwrap();
         let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_key = key.wrap(&kek, params, salt_string.clone(), 8).unwrap();
 

@@ -7,7 +7,7 @@ use scrypt::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::error::*;
+use crate::{error::*, master_key};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,11 +38,12 @@ impl WrappedKey {
         let salt_no_padding = raw.scrypt_salt.replace('=', "");
 
         Ok(Self {
-            scrypt_salt: SaltString::new(&salt_no_padding)?,
+            scrypt_salt: SaltString::from_b64(&salt_no_padding)?,
             scrypt_params: Params::new(
                 raw.scrypt_cost_param.ilog2() as u8,
                 raw.scrypt_block_size,
                 recommended_params.p(),
+                master_key::SUBKEY_LENGTH,
             )?,
             enc_key: Base64::decode_vec(&raw.primary_master_key)?,
             mac_key: Base64::decode_vec(&raw.hmac_master_key)?,

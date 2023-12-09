@@ -46,7 +46,7 @@ mod tests {
     #[ignore]
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
-        let salt_string = SaltString::new("W3huAdpTVi9F+VAdJEKG2g").unwrap();
+        let salt_string = SaltString::from_b64("W3huAdpTVi9F+VAdJEKG2g").unwrap();
         let kek = derive_kek(password, Params::recommended(), salt_string.as_salt()).unwrap();
         let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 

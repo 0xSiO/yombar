@@ -44,15 +44,31 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn password_hash_test() {
+        let password = String::from("pleaseletmein");
+        let salt_string = SaltString::encode_b64(b"SodiumChloride").unwrap();
+        let params = Params::new(14, 8, 1, 64).unwrap();
+        let password_hash = Scrypt
+            .hash_password_customized(password.as_bytes(), None, None, params, &salt_string)
+            .unwrap();
+
+        assert_eq!(
+            Base64::encode_string(password_hash.hash.unwrap().as_bytes()),
+            "cCO9yzr9c0hGHAbNgf046/2o+7qQT44+qbVD9lRdofLVQylVYT8Pz2LUlwUkKpr55h6F3A1lHkDfzwF7RVdYhw=="
+        );
+    }
+
+    #[test]
+    #[ignore]
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
-        let salt_string = SaltString::from_b64("W3huAdpTVi9F+VAdJEKG2g").unwrap();
+        let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
         let kek = derive_kek(password, Params::recommended(), salt_string.as_salt()).unwrap();
         let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
         assert_eq!(
             Base64::encode_string(&wrapped_data),
-            "LcAc5FUpnDrComkVESnE8g=="
+            "o0U9lG3iFzFJ9WylX5/YgQ=="
         );
     }
 

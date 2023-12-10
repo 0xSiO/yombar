@@ -123,7 +123,7 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl<'k> FileCryptor<Header> for Cryptor<'k> {
+impl<'k> FileCryptor<Header, NONCE_LEN> for Cryptor<'k> {
     fn encrypt_header(&self, header: Header) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);

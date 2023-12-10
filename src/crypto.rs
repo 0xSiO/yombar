@@ -9,12 +9,11 @@ where
 {
     fn new() -> Result<Self, rand_core::Error>;
 
-    // TODO: Parameterize by length
     fn content_key(&self) -> [u8; SUBKEY_LENGTH];
 }
 
 // TODO: Return result where needed
-pub trait FileCryptor<H: FileHeader> {
+pub trait FileCryptor<H: FileHeader, const NONCE_LEN: usize> {
     fn encrypt_header(&self, header: H) -> Vec<u8>;
 
     fn decrypt_header(&self, encrypted_header: &[u8]) -> H;
@@ -24,8 +23,7 @@ pub trait FileCryptor<H: FileHeader> {
         chunk: &[u8],
         header: &H,
         chunk_number: usize,
-        // TODO: Parameterize by length
-        nonce: &[u8; 16],
+        nonce: &[u8; NONCE_LEN],
     ) -> Vec<u8>;
 
     fn decrypt_chunk(&self, encrypted_chunk: &[u8], header: &H, chunk_number: usize) -> Vec<u8>;

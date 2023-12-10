@@ -53,11 +53,13 @@ pub fn siv_ctrmac_basic() {
     let cryptor = Cryptor::new(key);
 
     assert_eq!(
-        cryptor.decrypt_name("TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=", ""),
+        cryptor
+            .decrypt_name("TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=", "")
+            .unwrap(),
         "test_file.txt"
     );
     assert_eq!(
-        cryptor.encrypt_name("test_file.txt", ""),
+        cryptor.encrypt_name("test_file.txt", "").unwrap(),
         "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
     );
 
@@ -67,14 +69,16 @@ pub fn siv_ctrmac_basic() {
     )
     .unwrap();
 
-    let header = cryptor.decrypt_header(&ciphertext[..88]);
-    assert_eq!(cryptor.encrypt_header(&header), &ciphertext[..88]);
+    let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
+    assert_eq!(cryptor.encrypt_header(&header).unwrap(), &ciphertext[..88]);
 
     // Check file content encryption/decryption
     let plaintext = b"this is a test file with some text in it\n";
 
     assert_eq!(
-        cryptor.decrypt_chunk(&ciphertext[88..], &header, 0),
+        cryptor
+            .decrypt_chunk(&ciphertext[88..], &header, 0)
+            .unwrap(),
         plaintext
     );
 }

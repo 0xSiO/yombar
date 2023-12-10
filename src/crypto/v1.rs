@@ -4,7 +4,7 @@ use aes::{
 };
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32, Encoding as Base32Encoding};
-use base64ct::{Base64, Encoding as Base64Encoding};
+use base64ct::{Base64Url, Encoding as Base64Encoding};
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
@@ -196,12 +196,12 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
     }
 
     fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> String {
-        Base64::encode_string(&self.aes_siv_encrypt(name.as_bytes(), parent_dir_id.as_bytes()))
+        Base64Url::encode_string(&self.aes_siv_encrypt(name.as_bytes(), parent_dir_id.as_bytes()))
     }
 
     fn decrypt_name(&self, encrypted_name: &str, parent_dir_id: &str) -> String {
         // TODO: Handle decode error
-        let ciphertext = Base64::decode_vec(encrypted_name).unwrap();
+        let ciphertext = Base64Url::decode_vec(encrypted_name).unwrap();
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         String::from_utf8(self.aes_siv_decrypt(&ciphertext, parent_dir_id.as_bytes())).unwrap()
     }
@@ -210,6 +210,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 #[cfg(test)]
 mod tests {
     use aes_siv::siv::Aes128Siv;
+    use base64ct::Base64;
 
     use super::*;
 
@@ -304,7 +305,7 @@ mod tests {
         let ciphertext = cryptor.encrypt_name(name, dir_id);
         assert_eq!(
             ciphertext,
-            "WpmIYies2GhYC3gYZHOaUd76c3gp6VHLmFWy+7xWmDEQK19fEw=="
+            "WpmIYies2GhYC3gYZHOaUd76c3gp6VHLmFWy-7xWmDEQK19fEw=="
         );
         assert_eq!(cryptor.decrypt_name(&ciphertext, dir_id), name);
     }

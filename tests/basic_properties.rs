@@ -13,7 +13,7 @@ pub fn basic_properties() {
     )
     .unwrap();
 
-    // Check vault imported correctly
+    // Check vault import
     assert_eq!(
         vault.config().claims.jti.to_string(),
         "3c34938f-8acb-4c41-9a48-7a8f3c42835a"
@@ -22,7 +22,7 @@ pub fn basic_properties() {
     assert_eq!(vault.config().claims.shortening_threshold, 220);
     assert_eq!(vault.config().claims.cipher_combo, CipherCombo::SivCtrMac);
 
-    // Check key imported correctly
+    // Check key import
     let key = vault.master_key();
     assert_eq!(*key, unsafe {
         MasterKey::from_bytes(
@@ -33,7 +33,7 @@ pub fn basic_properties() {
         )
     });
 
-    // Check JWT signing/verifying with key works correctly
+    // Check JWT signing/verifying
     let config_jwt =
         util::sign_jwt(vault.config().header.clone(), vault.config().claims, key).unwrap();
 
@@ -46,7 +46,21 @@ pub fn basic_properties() {
     assert_eq!(decoded_config.header, vault.config().header);
     assert_eq!(decoded_config.claims, vault.config().claims);
 
-    // TODO: Fix SIV encryption, doesn't seem to match what's in the vault
     let cryptor = Cryptor::new(key);
-    println!("{}", cryptor.hash_dir_id(""));
+
+    // Check filename encryption
+    assert_eq!(
+        cryptor.encrypt_name("test_file.txt", ""),
+        "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
+    );
+
+    assert_eq!(
+        cryptor.encrypt_name("test_link", ""),
+        "tne_IIoGP9L5vHPlj1I71SPX2HvJFQudTg=="
+    );
+
+    assert_eq!(
+        cryptor.encrypt_name("test_dir", ""),
+        "v_CfBHr_pkOa5T7OQB-QYLzKm9TMrU-N"
+    );
 }

@@ -81,14 +81,22 @@ pub fn basic_properties() {
     )
     .unwrap();
 
-    let header = cryptor.decrypt_header(ciphertext[..88].to_vec());
+    let header = cryptor.decrypt_header(&ciphertext[..88]);
 
-    let new_ciphertext = cryptor.encrypt_chunk(plaintext.to_vec(), &header, 0);
+    let new_ciphertext = cryptor.encrypt_chunk(
+        plaintext,
+        &header,
+        0,
+        &[
+            0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
+            0x3d, 0x4c,
+        ],
+    );
     // TODO: This will fail once we start generating random nonces per chunk
     assert_eq!(new_ciphertext, ciphertext[88..]);
 
     assert_eq!(
-        cryptor.decrypt_chunk(ciphertext[88..].to_vec(), &header, 0),
+        cryptor.decrypt_chunk(&ciphertext[88..], &header, 0),
         plaintext
     );
 }

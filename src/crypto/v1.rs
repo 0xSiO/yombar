@@ -14,7 +14,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{master_key::SUBKEY_LENGTH, util, MasterKey};
 
-use super::FileCryptor;
+use super::{FileCryptor, FileHeader};
 
 // General constants
 const NONCE_LEN: usize = 16;
@@ -31,12 +31,12 @@ const CHUNK_LEN: usize = 32 * 1024;
 const ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + CHUNK_LEN + MAC_LEN;
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct FileHeader {
+pub struct Header {
     nonce: [u8; NONCE_LEN],
     payload: [u8; PAYLOAD_LEN],
 }
 
-impl super::FileHeader for FileHeader {
+impl FileHeader for Header {
     fn new() -> Result<Self, rand_core::Error> {
         let mut nonce = [0_u8; NONCE_LEN];
         OsRng.try_fill_bytes(&mut nonce)?;
@@ -48,6 +48,11 @@ impl super::FileHeader for FileHeader {
         payload[..RESERVED_LEN].copy_from_slice(&[0xff; RESERVED_LEN]);
 
         Ok(Self { nonce, payload })
+    }
+
+    fn content_key(&self) -> [u8; SUBKEY_LENGTH] {
+        debug_assert_eq!(self.payload.len() - RESERVED_LEN, SUBKEY_LENGTH);
+        self.payload[RESERVED_LEN..].try_into().unwrap()
     }
 }
 
@@ -64,10 +69,10 @@ impl<'k> Cryptor<'k> {
         &self,
         message: &[u8],
         key: &[u8; SUBKEY_LENGTH],
-        nonce: [u8; NONCE_LEN],
+        nonce: &[u8; NONCE_LEN],
     ) -> Vec<u8> {
         let mut message = message.to_vec();
-        Ctr128BE::<Aes256>::new(key.into(), &nonce.into()).apply_keystream(&mut message);
+        Ctr128BE::<Aes256>::new(key.into(), nonce.into()).apply_keystream(&mut message);
         message
     }
 
@@ -105,7 +110,7 @@ impl<'k> Cryptor<'k> {
             .unwrap()
     }
 
-    fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
+    fn chunk_hmac(&self, data: &[u8], header: &Header, chunk_number: usize) -> Vec<u8> {
         Hmac::<Sha256>::new_from_slice(self.key.mac_key())
             // Ok to unwrap, HMAC can take keys of any size
             .unwrap()
@@ -118,11 +123,11 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
-    fn encrypt_header(&self, header: FileHeader) -> Vec<u8> {
+impl<'k> FileCryptor<Header> for Cryptor<'k> {
+    fn encrypt_header(&self, header: Header) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
-        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), header.nonce));
+        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce));
         buffer.extend(util::hmac(&buffer, self.key));
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
@@ -130,17 +135,17 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         buffer
     }
 
-    fn decrypt_header(&self, encrypted_header: Vec<u8>) -> FileHeader {
+    fn decrypt_header(&self, encrypted_header: &[u8]) -> Header {
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
             // TODO: Error
-            println!("encrypted header length invalid!");
+            panic!("encrypted header length invalid!");
         }
 
         // First, verify the HMAC
         let (nonce_and_payload, expected_mac) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
         if util::hmac(nonce_and_payload, self.key) != expected_mac {
             // TODO: Error
-            println!("encrypted header hmac invalid!");
+            panic!("encrypted header hmac invalid!");
         }
 
         // Next, decrypt the payload
@@ -148,28 +153,28 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
         let payload: [u8; PAYLOAD_LEN] = self
-            .aes_ctr(payload, self.key.enc_key(), nonce)
+            .aes_ctr(payload, self.key.enc_key(), &nonce)
             .try_into()
             .unwrap();
 
-        FileHeader { nonce, payload }
+        Header { nonce, payload }
     }
 
-    fn encrypt_chunk(&self, chunk: Vec<u8>, header: &FileHeader, chunk_number: usize) -> Vec<u8> {
+    fn encrypt_chunk(
+        &self,
+        chunk: &[u8],
+        header: &Header,
+        chunk_number: usize,
+        nonce: &[u8; NONCE_LEN],
+    ) -> Vec<u8> {
         if chunk.is_empty() || chunk.len() > CHUNK_LEN {
             // TODO: Error
-            println!("chunk length invalid!");
+            panic!("chunk length invalid!");
         }
 
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
-        // TODO: For temporary testing purposes - later, generate a random nonce
-        let nonce: [u8; 16] = [
-            0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
-            0x3d, 0x4c,
-        ];
         buffer.extend(nonce);
-        // TODO: Nicer way to get the header content key
-        buffer.extend(self.aes_ctr(&chunk, header.payload[8..].try_into().unwrap(), nonce));
+        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce));
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
         debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
@@ -179,8 +184,8 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
     fn decrypt_chunk(
         &self,
-        encrypted_chunk: Vec<u8>,
-        header: &FileHeader,
+        encrypted_chunk: &[u8],
+        header: &Header,
         chunk_number: usize,
     ) -> Vec<u8> {
         if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
@@ -200,11 +205,10 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
         // Next, decrypt the chunk
         let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
-        // Ok to convert to sized array - we know the length at this point
+        // Ok to unwrap - we know the length at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
 
-        // TODO: Nicer way to get the header content key
-        self.aes_ctr(chunk, header.payload[8..].try_into().unwrap(), nonce)
+        self.aes_ctr(chunk, &header.content_key(), &nonce)
     }
 
     fn hash_dir_id(&self, dir_id: &str) -> String {
@@ -213,6 +217,8 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         Base32::encode_string(&hash).to_ascii_uppercase()
     }
 
+    // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get
+    // a unique binary representation." https://github.com/unicode-rs/unicode-normalization
     fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> String {
         Base64Url::encode_string(&self.aes_siv_encrypt(name.as_bytes(), parent_dir_id.as_bytes()))
     }
@@ -274,14 +280,14 @@ mod tests {
         // Safe, this is for test purposes only
         let key = unsafe { MasterKey::from_bytes([12_u8; SUBKEY_LENGTH * 2]) };
         let cryptor = Cryptor::new(&key);
-        let header = FileHeader {
+        let header = Header {
             nonce: [9; NONCE_LEN],
             payload: [2; PAYLOAD_LEN],
         };
 
         let ciphertext = cryptor.encrypt_header(header.clone());
         assert_eq!(Base64::encode_string(&ciphertext), "CQkJCQkJCQkJCQkJCQkJCbLKvhHVpdx6zpp+DCYeHQbzlREdVyMvQODun2plN9x6WRVW6IIIbrg4FwObxUUOzEgfvVvBAzIGOMXnFHGSjVP5fNWJYI+TVA==");
-        assert_eq!(cryptor.decrypt_header(ciphertext), header);
+        assert_eq!(cryptor.decrypt_header(&ciphertext), header);
     }
 
     #[test]
@@ -289,18 +295,18 @@ mod tests {
         // Safe, this is for test purposes only
         let key = unsafe { MasterKey::from_bytes([13_u8; SUBKEY_LENGTH * 2]) };
         let cryptor = Cryptor::new(&key);
-        let header = FileHeader {
+        let header = Header {
             nonce: [19; NONCE_LEN],
             payload: [23; PAYLOAD_LEN],
         };
         let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
 
-        let ciphertext = cryptor.encrypt_chunk(chunk.clone(), &header, 2);
+        let ciphertext = cryptor.encrypt_chunk(&chunk, &header, 2, &[0; NONCE_LEN]);
         assert_eq!(
             Base64::encode_string(&ciphertext),
-            "pb7px6whcg/970duL+s9TDOhnI8JCP1vGqj5j2jv3H1rhl0wxmKoD9i3KD16auAewNT6DF05uxzjkm9nDPwXJMpf+KrzRc/lf0n/DHqO/U2/7WD19N5LwmcP/g=="
+            "AAAAAAAAAAAAAAAAAAAAAPEq/PjcykUIlDRazM36igCN1QKikATEKglKUEDWiEkMGujfnzOMHOLK+h1N4PnB891N+uiKvZVyNWgezJc2G4ejVvLko6B1/IMyrQ=="
         );
-        assert_eq!(cryptor.decrypt_chunk(ciphertext, &header, 2), chunk);
+        assert_eq!(cryptor.decrypt_chunk(&ciphertext, &header, 2), chunk);
     }
 
     #[test]

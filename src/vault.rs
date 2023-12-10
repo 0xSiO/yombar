@@ -4,7 +4,7 @@ use jsonwebtoken::{TokenData, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::*, master_key::MasterKey, util, wrapped_key::WrappedKey};
+use crate::{error::*, util, MasterKey, WrappedKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CipherCombo {

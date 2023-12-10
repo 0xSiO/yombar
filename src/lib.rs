@@ -1,12 +1,10 @@
 pub mod crypto;
 pub mod error;
-mod master_key;
+mod key;
 pub mod util;
 mod vault;
-mod wrapped_key;
 
 pub use self::{
-    master_key::MasterKey,
+    key::{MasterKey, WrappedKey},
     vault::{CipherCombo, Vault, VaultConfig},
-    wrapped_key::WrappedKey,
 };

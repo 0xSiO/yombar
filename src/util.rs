@@ -9,7 +9,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
-use crate::{error::*, master_key::SUBKEY_LENGTH, MasterKey};
+use crate::{error::*, key::SUBKEY_LENGTH, MasterKey};
 
 pub fn derive_kek(
     mut password: String,

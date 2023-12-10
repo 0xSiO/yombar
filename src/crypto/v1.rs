@@ -12,7 +12,7 @@ use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::CryptorV1Error, master_key::SUBKEY_LENGTH, util, MasterKey};
+use crate::{error::CryptorV1Error, key::SUBKEY_LENGTH, util, MasterKey};
 
 use super::{FileCryptor, FileHeader};
 

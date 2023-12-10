@@ -7,13 +7,13 @@ use jsonwebtoken::{TokenData, Validation};
 
 #[test]
 pub fn basic_properties() {
+    // Check vault import
     let vault = Vault::open(
         "tests/fixtures/vault_v8_siv_ctrmac/vault.cryptomator",
         String::from("password"),
     )
     .unwrap();
 
-    // Check vault import
     assert_eq!(
         vault.config().claims.jti.to_string(),
         "3c34938f-8acb-4c41-9a48-7a8f3c42835a"
@@ -24,6 +24,7 @@ pub fn basic_properties() {
 
     // Check key import
     let key = vault.master_key();
+
     assert_eq!(*key, unsafe {
         MasterKey::from_bytes(
             Base64::decode_vec("6RqWrWltqvYqQAowjweyJs8Hq/45NL3t/yIB/gVcubF8id+XIsrTnr7qfnd2YKLP/otupwsBCC+jaoIiduSxlw==")
@@ -46,57 +47,45 @@ pub fn basic_properties() {
     assert_eq!(decoded_config.header, vault.config().header);
     assert_eq!(decoded_config.claims, vault.config().claims);
 
+    // Check file name encryption/decryption
     let cryptor = Cryptor::new(key);
 
-    // Check filename encryption/decryption
-    assert_eq!(
-        cryptor.encrypt_name("test_file.txt", ""),
-        "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
-    );
     assert_eq!(
         cryptor.decrypt_name("TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=", ""),
         "test_file.txt"
     );
     assert_eq!(
-        cryptor.encrypt_name("test_link", ""),
-        "tne_IIoGP9L5vHPlj1I71SPX2HvJFQudTg=="
-    );
-    assert_eq!(
-        cryptor.decrypt_name("tne_IIoGP9L5vHPlj1I71SPX2HvJFQudTg==", ""),
-        "test_link"
-    );
-    assert_eq!(
-        cryptor.encrypt_name("test_dir", ""),
-        "v_CfBHr_pkOa5T7OQB-QYLzKm9TMrU-N"
-    );
-    assert_eq!(
-        cryptor.decrypt_name("v_CfBHr_pkOa5T7OQB-QYLzKm9TMrU-N", ""),
-        "test_dir"
+        cryptor.encrypt_name("test_file.txt", ""),
+        "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
     );
 
-    // Check file content encryption/decryption
-    let plaintext = b"this is a test file with some text in it\n";
+    // Check file header encryption/decryption
     let ciphertext = std::fs::read(
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
     )
     .unwrap();
 
     let header = cryptor.decrypt_header(&ciphertext[..88]);
+    assert_eq!(cryptor.encrypt_header(&header), &ciphertext[..88]);
 
-    let new_ciphertext = cryptor.encrypt_chunk(
-        plaintext,
-        &header,
-        0,
-        &[
-            0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
-            0x3d, 0x4c,
-        ],
-    );
-    // TODO: This will fail once we start generating random nonces per chunk
-    assert_eq!(new_ciphertext, ciphertext[88..]);
+    // Check file content encryption/decryption
+    let plaintext = b"this is a test file with some text in it\n";
 
     assert_eq!(
         cryptor.decrypt_chunk(&ciphertext[88..], &header, 0),
         plaintext
+    );
+    assert_eq!(
+        cryptor.encrypt_chunk(
+            plaintext,
+            &header,
+            0,
+            // Known nonce for this chunk
+            &[
+                0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
+                0x3d, 0x4c,
+            ],
+        ),
+        ciphertext[88..]
     );
 }

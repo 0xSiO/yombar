@@ -14,7 +14,7 @@ where
 
 // TODO: Return result where needed
 pub trait FileCryptor<H: FileHeader, const NONCE_LEN: usize> {
-    fn encrypt_header(&self, header: H) -> Vec<u8>;
+    fn encrypt_header(&self, header: &H) -> Vec<u8>;
 
     fn decrypt_header(&self, encrypted_header: &[u8]) -> H;
 

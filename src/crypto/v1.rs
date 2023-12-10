@@ -124,7 +124,7 @@ impl<'k> Cryptor<'k> {
 }
 
 impl<'k> FileCryptor<Header, NONCE_LEN> for Cryptor<'k> {
-    fn encrypt_header(&self, header: Header) -> Vec<u8> {
+    fn encrypt_header(&self, header: &Header) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
         buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce));
@@ -285,7 +285,7 @@ mod tests {
             payload: [2; PAYLOAD_LEN],
         };
 
-        let ciphertext = cryptor.encrypt_header(header.clone());
+        let ciphertext = cryptor.encrypt_header(&header);
         assert_eq!(Base64::encode_string(&ciphertext), "CQkJCQkJCQkJCQkJCQkJCbLKvhHVpdx6zpp+DCYeHQbzlREdVyMvQODun2plN9x6WRVW6IIIbrg4FwObxUUOzEgfvVvBAzIGOMXnFHGSjVP5fNWJYI+TVA==");
         assert_eq!(cryptor.decrypt_header(&ciphertext), header);
     }

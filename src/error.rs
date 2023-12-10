@@ -5,18 +5,6 @@ use scrypt::password_hash;
 use crate::CipherCombo;
 
 #[derive(Debug, thiserror::Error)]
-pub enum CryptorV1Error {
-    #[error("failed to apply keystream")]
-    CipherError(#[from] aes::cipher::StreamCipherError),
-    #[error("failed to encrypt/decrypt using AES-SIV")]
-    AesSivError(#[from] aes_siv::Error),
-    #[error("failed to decode base64 string")]
-    Base64DecodeError(#[from] base64ct::Error),
-    #[error("failed to convert to UTF-8 string")]
-    InvalidUTF8(#[from] std::string::FromUtf8Error),
-}
-
-#[derive(Debug, thiserror::Error)]
 pub enum KeyFromFileError {
     #[error("failed to read key file")]
     ReadKeyFile(#[from] io::Error),

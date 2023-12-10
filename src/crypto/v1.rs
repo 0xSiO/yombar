@@ -12,7 +12,7 @@ use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::CryptorV1Error, key::SUBKEY_LEN, util, MasterKey};
+use crate::{key::SUBKEY_LEN, util, MasterKey};
 
 use super::{FileCryptor, FileHeader};
 
@@ -27,8 +27,28 @@ const PAYLOAD_LEN: usize = RESERVED_LEN + CONTENT_KEY_LEN;
 const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + MAC_LEN;
 
 // File content constants
-const CHUNK_LEN: usize = 32 * 1024;
-const ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + CHUNK_LEN + MAC_LEN;
+const MAX_CHUNK_LEN: usize = 32 * 1024;
+const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + MAC_LEN;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("invalid header length: {0}")]
+    InvalidHeaderLen(usize),
+    #[error("invalid chunk length: {0}")]
+    InvalidChunkLen(usize),
+    #[error("MAC verification failed")]
+    MacVerificationFailed { expected: Vec<u8>, actual: Vec<u8> },
+    #[error("failed to generate random bytes")]
+    RandError(#[from] rand_core::Error),
+    #[error("failed to apply keystream")]
+    CipherError(#[from] aes::cipher::StreamCipherError),
+    #[error("failed to encrypt/decrypt using AES-SIV")]
+    AesSivError(#[from] aes_siv::Error),
+    #[error("failed to decode base64 string")]
+    Base64DecodeError(#[from] base64ct::Error),
+    #[error("failed to convert to UTF-8 string")]
+    InvalidUTF8(#[from] std::string::FromUtf8Error),
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Header {
@@ -132,25 +152,20 @@ impl<'k> Cryptor<'k> {
         chunk: &[u8],
         header: &Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorV1Error> {
-        if chunk.is_empty() || chunk.len() > CHUNK_LEN {
-            // TODO: Error
-            panic!("chunk length invalid!");
-        }
-
+    ) -> Result<Vec<u8>, StreamCipherError> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(nonce);
         buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
-        debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
+        debug_assert!(buffer.len() <= MAX_ENCRYPTED_CHUNK_LEN);
 
         Ok(buffer)
     }
 }
 
-impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
-    fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, CryptorV1Error> {
+impl<'k> FileCryptor<Header, Error> for Cryptor<'k> {
+    fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
         buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce)?);
@@ -159,17 +174,19 @@ impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
         Ok(buffer)
     }
 
-    fn decrypt_header(&self, encrypted_header: &[u8]) -> Result<Header, CryptorV1Error> {
+    fn decrypt_header(&self, encrypted_header: &[u8]) -> Result<Header, Error> {
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
-            // TODO: Error
-            panic!("encrypted header length invalid!");
+            return Err(Error::InvalidHeaderLen(encrypted_header.len()));
         }
 
         // First, verify the HMAC
         let (nonce_and_payload, expected_mac) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
-        if util::hmac(nonce_and_payload, self.key) != expected_mac {
-            // TODO: Error
-            panic!("encrypted header hmac invalid!");
+        let actual_mac = util::hmac(nonce_and_payload, self.key);
+        if actual_mac != expected_mac {
+            return Err(Error::MacVerificationFailed {
+                expected: expected_mac.to_vec(),
+                actual: actual_mac,
+            });
         }
 
         // Next, decrypt the payload
@@ -189,10 +206,14 @@ impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
         chunk: &[u8],
         header: &Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorV1Error> {
+    ) -> Result<Vec<u8>, Error> {
+        if chunk.is_empty() || chunk.len() > MAX_CHUNK_LEN {
+            return Err(Error::InvalidChunkLen(chunk.len()));
+        }
+
         let mut nonce = [0_u8; NONCE_LEN];
-        OsRng.try_fill_bytes(&mut nonce).unwrap();
-        self.encrypt_chunk_using_nonce(&nonce, chunk, header, chunk_number)
+        OsRng.try_fill_bytes(&mut nonce)?;
+        Ok(self.encrypt_chunk_using_nonce(&nonce, chunk, header, chunk_number)?)
     }
 
     fn decrypt_chunk(
@@ -200,20 +221,22 @@ impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
         encrypted_chunk: &[u8],
         header: &Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorV1Error> {
+    ) -> Result<Vec<u8>, Error> {
         if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
-            || encrypted_chunk.len() > ENCRYPTED_CHUNK_LEN
+            || encrypted_chunk.len() > MAX_ENCRYPTED_CHUNK_LEN
         {
-            // TODO: Error
-            println!("encrypted chunk length invalid!");
+            return Err(Error::InvalidChunkLen(encrypted_chunk.len()));
         }
 
         // First, verify the HMAC
         let (nonce_and_chunk, expected_mac) =
             encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
-        if self.chunk_hmac(nonce_and_chunk, header, chunk_number) != expected_mac {
-            // TODO: Error
-            println!("encrypted chunk hmac invalid!");
+        let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
+        if actual_mac != expected_mac {
+            return Err(Error::MacVerificationFailed {
+                expected: expected_mac.to_vec(),
+                actual: actual_mac,
+            });
         }
 
         // Next, decrypt the chunk
@@ -224,7 +247,7 @@ impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
         Ok(self.aes_ctr(chunk, &header.content_key(), &nonce)?)
     }
 
-    fn hash_dir_id(&self, dir_id: &str) -> Result<String, CryptorV1Error> {
+    fn hash_dir_id(&self, dir_id: &str) -> Result<String, Error> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         Ok(Base32::encode_string(&hash).to_ascii_uppercase())
@@ -232,18 +255,14 @@ impl<'k> FileCryptor<Header, CryptorV1Error> for Cryptor<'k> {
 
     // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get
     // a unique binary representation." https://github.com/unicode-rs/unicode-normalization
-    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, CryptorV1Error> {
+    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, Error> {
         Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
             name.as_bytes(),
             parent_dir_id.as_bytes(),
         )?))
     }
 
-    fn decrypt_name(
-        &self,
-        encrypted_name: &str,
-        parent_dir_id: &str,
-    ) -> Result<String, CryptorV1Error> {
+    fn decrypt_name(&self, encrypted_name: &str, parent_dir_id: &str) -> Result<String, Error> {
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
             &Base64Url::decode_vec(encrypted_name)?,

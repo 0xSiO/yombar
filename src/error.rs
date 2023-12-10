@@ -28,12 +28,12 @@ pub enum SivCtrMacCryptorError {
     InvalidHeaderLen(usize),
     #[error("invalid chunk length: {0}")]
     InvalidChunkLen(usize),
-    #[error("MAC verification failed")]
+    #[error("failed to verify MAC")]
     MacVerificationFailed { expected: Vec<u8>, actual: Vec<u8> },
     #[error("failed to generate random bytes")]
     RandError(#[from] rand_core::Error),
-    #[error("failed to apply keystream")]
-    CipherError(#[from] aes::cipher::StreamCipherError),
+    #[error("failed to encrypt/decrypt using AES-CTR")]
+    AesCtrError(#[from] aes::cipher::StreamCipherError),
     #[error("failed to encrypt/decrypt using AES-SIV")]
     AesSivError(#[from] aes_siv::Error),
     #[error("failed to decode base64 string")]
@@ -60,6 +60,6 @@ pub enum VaultUnlockError {
     UnsupportedKeyUri(String),
     #[error("unsupported vault format: {0}")]
     UnsupportedVaultFormat(u32),
-    #[error("supported cipher combo: {0:?}")]
+    #[error("unsupported cipher combo: {0:?}")]
     UnsupportedCipherCombo(CipherCombo),
 }

@@ -36,8 +36,8 @@ pub struct Header {
     payload: [u8; PAYLOAD_LEN],
 }
 
-impl FileHeader for Header {
-    fn new() -> Result<Self, rand_core::Error> {
+impl Header {
+    pub fn new() -> Result<Self, rand_core::Error> {
         let mut nonce = [0_u8; NONCE_LEN];
         OsRng.try_fill_bytes(&mut nonce)?;
 
@@ -55,6 +55,8 @@ impl FileHeader for Header {
         self.payload[RESERVED_LEN..].try_into().unwrap()
     }
 }
+
+impl FileHeader for Header {}
 
 pub struct Cryptor<'k> {
     key: &'k MasterKey,
@@ -121,9 +123,31 @@ impl<'k> Cryptor<'k> {
             .into_bytes()
             .to_vec()
     }
+
+    fn encrypt_chunk_using_nonce(
+        &self,
+        nonce: &[u8; NONCE_LEN],
+        chunk: &[u8],
+        header: &Header,
+        chunk_number: usize,
+    ) -> Vec<u8> {
+        if chunk.is_empty() || chunk.len() > CHUNK_LEN {
+            // TODO: Error
+            panic!("chunk length invalid!");
+        }
+
+        let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
+        buffer.extend(nonce);
+        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce));
+        buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
+
+        debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
+
+        buffer
+    }
 }
 
-impl<'k> FileCryptor<Header, NONCE_LEN> for Cryptor<'k> {
+impl<'k> FileCryptor<Header> for Cryptor<'k> {
     fn encrypt_header(&self, header: &Header) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
@@ -160,26 +184,10 @@ impl<'k> FileCryptor<Header, NONCE_LEN> for Cryptor<'k> {
         Header { nonce, payload }
     }
 
-    fn encrypt_chunk(
-        &self,
-        chunk: &[u8],
-        header: &Header,
-        chunk_number: usize,
-        nonce: &[u8; NONCE_LEN],
-    ) -> Vec<u8> {
-        if chunk.is_empty() || chunk.len() > CHUNK_LEN {
-            // TODO: Error
-            panic!("chunk length invalid!");
-        }
-
-        let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
-        buffer.extend(nonce);
-        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce));
-        buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
-
-        debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
-
-        buffer
+    fn encrypt_chunk(&self, chunk: &[u8], header: &Header, chunk_number: usize) -> Vec<u8> {
+        let mut nonce = [0_u8; NONCE_LEN];
+        OsRng.try_fill_bytes(&mut nonce).unwrap();
+        self.encrypt_chunk_using_nonce(&nonce, chunk, header, chunk_number)
     }
 
     fn decrypt_chunk(
@@ -301,7 +309,7 @@ mod tests {
         };
         let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
 
-        let ciphertext = cryptor.encrypt_chunk(&chunk, &header, 2, &[0; NONCE_LEN]);
+        let ciphertext = cryptor.encrypt_chunk_using_nonce(&[0; NONCE_LEN], &chunk, &header, 2);
         assert_eq!(
             Base64::encode_string(&ciphertext),
             "AAAAAAAAAAAAAAAAAAAAAPEq/PjcykUIlDRazM36igCN1QKikATEKglKUEDWiEkMGujfnzOMHOLK+h1N4PnB891N+uiKvZVyNWgezJc2G4ejVvLko6B1/IMyrQ=="

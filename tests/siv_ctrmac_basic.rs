@@ -77,17 +77,4 @@ pub fn siv_ctrmac_basic() {
         cryptor.decrypt_chunk(&ciphertext[88..], &header, 0),
         plaintext
     );
-    assert_eq!(
-        cryptor.encrypt_chunk(
-            plaintext,
-            &header,
-            0,
-            // Known nonce for this chunk
-            &[
-                0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
-                0x3d, 0x4c,
-            ],
-        ),
-        ciphertext[88..]
-    );
 }

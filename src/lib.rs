@@ -7,6 +7,6 @@ mod wrapped_key;
 
 pub use self::{
     master_key::MasterKey,
-    vault::{CipherCombo, Vault},
+    vault::{CipherCombo, Vault, VaultConfig},
     wrapped_key::WrappedKey,
 };

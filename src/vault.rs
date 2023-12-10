@@ -16,7 +16,7 @@ pub enum CipherCombo {
     SivGcm,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultConfig {
     pub jti: Uuid,
@@ -25,7 +25,6 @@ pub struct VaultConfig {
     pub cipher_combo: CipherCombo,
 }
 
-#[allow(dead_code)]
 pub struct Vault {
     config: TokenData<VaultConfig>,
     master_key: MasterKey,
@@ -81,5 +80,13 @@ impl Vault {
         } else {
             Err(VaultUnlockError::UnsupportedKeyUri(master_key_uri))
         }
+    }
+
+    pub fn config(&self) -> &TokenData<VaultConfig> {
+        &self.config
+    }
+
+    pub fn master_key(&self) -> &MasterKey {
+        &self.master_key
     }
 }

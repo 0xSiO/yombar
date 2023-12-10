@@ -9,7 +9,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
-use crate::{error::*, key::SUBKEY_LENGTH, MasterKey};
+use crate::{error::*, key::SUBKEY_LEN, MasterKey};
 
 pub fn derive_kek(
     mut password: String,
@@ -20,9 +20,9 @@ pub fn derive_kek(
         Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
 
     password.zeroize();
-    debug_assert_eq!(password_hash.hash.unwrap().len(), SUBKEY_LENGTH);
+    debug_assert_eq!(password_hash.hash.unwrap().len(), SUBKEY_LEN);
 
-    let mut kek_bytes = [0_u8; SUBKEY_LENGTH];
+    let mut kek_bytes = [0_u8; SUBKEY_LEN];
     kek_bytes.copy_from_slice(password_hash.hash.unwrap().as_bytes());
     Ok(Kek::from(kek_bytes))
 }
@@ -87,7 +87,7 @@ mod tests {
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
         let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
-        let params = Params::new(15, 8, 1, SUBKEY_LENGTH).unwrap();
+        let params = Params::new(15, 8, 1, SUBKEY_LEN).unwrap();
         let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn hmac_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([15_u8; SUBKEY_LENGTH * 2]) };
+        let key = unsafe { MasterKey::from_bytes([15_u8; SUBKEY_LEN * 2]) };
         assert_eq!(
             Base64::encode_string(&hmac(b"here is some data", &key)),
             "CWTyTEOJ2pDGgMpGjHgQV8T+EjEJYliXRQL2XzgT1W0="
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn sign_and_verify_jwt_test() {
-        let key_bytes = [[30; SUBKEY_LENGTH], [40; SUBKEY_LENGTH]].concat();
+        let key_bytes = [[30; SUBKEY_LEN], [40; SUBKEY_LEN]].concat();
         // Safe, this is for test purposes only
         let key = unsafe { MasterKey::from_bytes(key_bytes.try_into().unwrap()) };
 

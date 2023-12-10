@@ -12,14 +12,14 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{error::*, util};
 
-pub const SUBKEY_LENGTH: usize = 32;
+pub const SUBKEY_LEN: usize = 32;
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct MasterKey([u8; SUBKEY_LENGTH * 2]);
+pub struct MasterKey([u8; SUBKEY_LEN * 2]);
 
 impl MasterKey {
     pub fn new() -> Result<Self, rand_core::Error> {
-        let mut key = Self([0_u8; SUBKEY_LENGTH * 2]);
+        let mut key = Self([0_u8; SUBKEY_LEN * 2]);
         OsRng.try_fill_bytes(&mut key.0)?;
         Ok(key)
     }
@@ -29,19 +29,19 @@ impl MasterKey {
     /// # Safety
     ///
     /// - `bytes` should contain secret, random bytes with sufficient entropy
-    pub unsafe fn from_bytes(bytes: [u8; SUBKEY_LENGTH * 2]) -> Self {
+    pub unsafe fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
         MasterKey(bytes)
     }
 
-    pub(crate) fn enc_key(&self) -> &[u8; SUBKEY_LENGTH] {
-        self.0[0..SUBKEY_LENGTH].try_into().unwrap()
+    pub(crate) fn enc_key(&self) -> &[u8; SUBKEY_LEN] {
+        self.0[0..SUBKEY_LEN].try_into().unwrap()
     }
 
-    pub(crate) fn mac_key(&self) -> &[u8; SUBKEY_LENGTH] {
-        self.0[SUBKEY_LENGTH..].try_into().unwrap()
+    pub(crate) fn mac_key(&self) -> &[u8; SUBKEY_LEN] {
+        self.0[SUBKEY_LEN..].try_into().unwrap()
     }
 
-    pub(crate) fn raw_key(&self) -> &[u8; SUBKEY_LENGTH * 2] {
+    pub(crate) fn raw_key(&self) -> &[u8; SUBKEY_LEN * 2] {
         &self.0
     }
 
@@ -52,8 +52,8 @@ impl MasterKey {
         scrypt_salt: SaltString,
         format_version: u32,
     ) -> Result<WrappedKey, aes_kw::Error> {
-        let mut wrapped_enc_master_key = [0_u8; SUBKEY_LENGTH + 8];
-        let mut wrapped_mac_master_key = [0_u8; SUBKEY_LENGTH + 8];
+        let mut wrapped_enc_master_key = [0_u8; SUBKEY_LEN + 8];
+        let mut wrapped_mac_master_key = [0_u8; SUBKEY_LEN + 8];
 
         key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
         key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
@@ -71,9 +71,9 @@ impl MasterKey {
         wrapped_key: &WrappedKey,
         key_encryption_key: &KekAes256,
     ) -> Result<Self, aes_kw::Error> {
-        let mut buffer = [0_u8; SUBKEY_LENGTH * 2];
-        key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LENGTH])?;
-        key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LENGTH..])?;
+        let mut buffer = [0_u8; SUBKEY_LEN * 2];
+        key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LEN])?;
+        key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LEN..])?;
         Ok(MasterKey(buffer))
     }
 }
@@ -112,7 +112,7 @@ impl WrappedKey {
                 raw.scrypt_cost_param.ilog2() as u8,
                 raw.scrypt_block_size,
                 recommended_params.p(),
-                SUBKEY_LENGTH,
+                SUBKEY_LEN,
             )?,
             enc_key: Base64::decode_vec(&raw.primary_master_key)?,
             mac_key: Base64::decode_vec(&raw.hmac_master_key)?,
@@ -152,10 +152,10 @@ mod tests {
     #[test]
     #[ignore]
     fn wrap_and_unwrap_test() {
-        let key_bytes = [[10; SUBKEY_LENGTH], [20; SUBKEY_LENGTH]].concat();
+        let key_bytes = [[10; SUBKEY_LEN], [20; SUBKEY_LEN]].concat();
         let key = MasterKey(key_bytes.try_into().unwrap());
         let password = String::from("this is a test password");
-        let params = Params::new(15, 8, 1, SUBKEY_LENGTH).unwrap();
+        let params = Params::new(15, 8, 1, SUBKEY_LEN).unwrap();
         let salt_string = SaltString::encode_b64(b"test salt").unwrap();
         let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_key = key.wrap(&kek, params, salt_string.clone(), 8).unwrap();

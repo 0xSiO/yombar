@@ -12,7 +12,7 @@ use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::CryptorV1Error, key::SUBKEY_LENGTH, util, MasterKey};
+use crate::{error::CryptorV1Error, key::SUBKEY_LEN, util, MasterKey};
 
 use super::{FileCryptor, FileHeader};
 
@@ -50,8 +50,8 @@ impl Header {
         Ok(Self { nonce, payload })
     }
 
-    fn content_key(&self) -> [u8; SUBKEY_LENGTH] {
-        debug_assert_eq!(self.payload.len() - RESERVED_LEN, SUBKEY_LENGTH);
+    fn content_key(&self) -> [u8; SUBKEY_LEN] {
+        debug_assert_eq!(self.payload.len() - RESERVED_LEN, SUBKEY_LEN);
         self.payload[RESERVED_LEN..].try_into().unwrap()
     }
 }
@@ -70,7 +70,7 @@ impl<'k> Cryptor<'k> {
     fn aes_ctr(
         &self,
         message: &[u8],
-        key: &[u8; SUBKEY_LENGTH],
+        key: &[u8; SUBKEY_LEN],
         nonce: &[u8; NONCE_LEN],
     ) -> Result<Vec<u8>, StreamCipherError> {
         let mut message = message.to_vec();
@@ -87,8 +87,8 @@ impl<'k> Cryptor<'k> {
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
         // TODO: Use slice flatten() method when stabilized
-        let mut key = [0_u8; SUBKEY_LENGTH * 2];
-        let (left, right) = key.split_at_mut(SUBKEY_LENGTH);
+        let mut key = [0_u8; SUBKEY_LEN * 2];
+        let (left, right) = key.split_at_mut(SUBKEY_LEN);
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
@@ -104,12 +104,12 @@ impl<'k> Cryptor<'k> {
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
         // TODO: Use slice flatten() method when stabilized
-        let mut key = [0_u8; SUBKEY_LENGTH * 2];
-        let (left, right) = key.split_at_mut(SUBKEY_LENGTH);
+        let mut key = [0_u8; SUBKEY_LEN * 2];
+        let (left, right) = key.split_at_mut(SUBKEY_LEN);
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        debug_assert_eq!(key.len(), SUBKEY_LENGTH * 2);
+        debug_assert_eq!(key.len(), SUBKEY_LEN * 2);
 
         Aes256Siv::new(GenericArray::from_slice(&key)).decrypt([associated_data], ciphertext)
     }
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn file_header_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([12_u8; SUBKEY_LENGTH * 2]) };
+        let key = unsafe { MasterKey::from_bytes([12_u8; SUBKEY_LEN * 2]) };
         let cryptor = Cryptor::new(&key);
         let header = Header {
             nonce: [9; NONCE_LEN],
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn file_chunk_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([13_u8; SUBKEY_LENGTH * 2]) };
+        let key = unsafe { MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]) };
         let cryptor = Cryptor::new(&key);
         let header = Header {
             nonce: [19; NONCE_LEN],
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn dir_id_hash_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([193_u8; SUBKEY_LENGTH * 2]) };
+        let key = unsafe { MasterKey::from_bytes([193_u8; SUBKEY_LEN * 2]) };
         let cryptor = Cryptor::new(&key);
 
         assert_eq!(
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn file_name_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([53_u8; SUBKEY_LENGTH * 2]) };
+        let key = unsafe { MasterKey::from_bytes([53_u8; SUBKEY_LEN * 2]) };
         let cryptor = Cryptor::new(&key);
         let name = "example_file_name.txt";
         let dir_id = "b77a03f6-d561-482e-95ff-97d01a9ea26b";

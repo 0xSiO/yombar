@@ -1,6 +1,6 @@
 use base64ct::{Base64, Encoding};
 use cryptomator::{
-    crypto::{v1::Cryptor, FileCryptor},
+    crypto::{siv_ctrmac::Cryptor, FileCryptor},
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
 use jsonwebtoken::{TokenData, Validation};

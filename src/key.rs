@@ -24,7 +24,7 @@ impl MasterKey {
         Ok(key)
     }
 
-    /// Create a [MasterKey] from the provided byte array.
+    /// Create a [`MasterKey`] from the provided byte array.
     ///
     /// # Safety
     ///

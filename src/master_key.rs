@@ -26,15 +26,15 @@ impl MasterKey {
         MasterKey(bytes)
     }
 
-    pub(crate) fn enc_key(&self) -> &[u8] {
-        &self.0[0..SUBKEY_LENGTH]
+    pub(crate) fn enc_key(&self) -> &[u8; SUBKEY_LENGTH] {
+        self.0[0..SUBKEY_LENGTH].try_into().unwrap()
     }
 
-    pub(crate) fn mac_key(&self) -> &[u8] {
-        &self.0[SUBKEY_LENGTH..]
+    pub(crate) fn mac_key(&self) -> &[u8; SUBKEY_LENGTH] {
+        self.0[SUBKEY_LENGTH..].try_into().unwrap()
     }
 
-    pub(crate) fn raw_key(&self) -> &[u8] {
+    pub(crate) fn raw_key(&self) -> &[u8; SUBKEY_LENGTH * 2] {
         &self.0
     }
 

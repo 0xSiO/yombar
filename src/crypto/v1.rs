@@ -1,5 +1,5 @@
 use aes::{
-    cipher::{KeyIvInit, StreamCipher},
+    cipher::{generic_array::GenericArray, KeyIvInit, StreamCipher},
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
@@ -71,14 +71,16 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key
-        let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
-            .concat()
-            .try_into()
-            .unwrap();
+        // AES-SIV takes both the encryption key and mac key, but in reverse order
+        // TODO: Use slice flatten() method when stabilized
+        let mut key = Vec::with_capacity(SUBKEY_LENGTH * 2);
+        key.extend(self.key.mac_key());
+        key.extend(self.key.enc_key());
+
+        debug_assert_eq!(key.len(), SUBKEY_LENGTH * 2);
 
         // Seems okay to unwrap here, I can't find any input data where it panics
-        Aes256Siv::new(&key.into())
+        Aes256Siv::new(GenericArray::from_slice(&key))
             .encrypt([associated_data], plaintext)
             .unwrap()
     }
@@ -86,21 +88,23 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[u8]) -> Vec<u8> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key
-        let key: [u8; SUBKEY_LENGTH * 2] = [self.key.enc_key(), self.key.mac_key()]
-            .concat()
-            .try_into()
-            .unwrap();
+        // AES-SIV takes both the encryption key and mac key, but in reverse order
+        // TODO: Use slice flatten() method when stabilized
+        let mut key = Vec::with_capacity(SUBKEY_LENGTH * 2);
+        key.extend(self.key.mac_key());
+        key.extend(self.key.enc_key());
+
+        debug_assert_eq!(key.len(), SUBKEY_LENGTH * 2);
 
         // TODO: Handle decryption error
-        Aes256Siv::new(&key.into())
+        Aes256Siv::new(GenericArray::from_slice(&key))
             .decrypt([associated_data], ciphertext)
             .unwrap()
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
         Hmac::<Sha256>::new_from_slice(self.key.mac_key())
-            // ok to unwrap, hmac can take keys of any size
+            // Ok to unwrap, HMAC can take keys of any size
             .unwrap()
             .chain_update(header.nonce)
             .chain_update(chunk_number.to_be_bytes())
@@ -205,7 +209,46 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
 
 #[cfg(test)]
 mod tests {
+    use aes_siv::siv::Aes128Siv;
+
     use super::*;
+
+    #[test]
+    fn siv_encrypt_decrypt_test() {
+        use aes_siv::KeyInit;
+
+        // First half is MAC key, second half is encryption key
+        let key = [
+            0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0xfa, 0xf9, 0xf8, 0xf7, 0xf6, 0xf5, 0xf4, 0xf3, 0xf2,
+            0xf1, 0xf0, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb,
+            0xfc, 0xfd, 0xfe, 0xff,
+        ];
+
+        let plaintext = [
+            0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee,
+        ];
+
+        let associated_data = [
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+        ];
+
+        let ciphertext = Aes128Siv::new(GenericArray::from_slice(&key))
+            .encrypt([associated_data], &plaintext)
+            .unwrap();
+
+        assert_eq!(
+            Base64::encode_string(&ciphertext),
+            "hWMtB8bo83+VCs0yCi7Mk0DAK5aQxNwE2u9/av5c"
+        );
+
+        assert_eq!(
+            Aes128Siv::new(GenericArray::from_slice(&key))
+                .decrypt([associated_data], &ciphertext)
+                .unwrap(),
+            plaintext
+        );
+    }
 
     #[test]
     fn file_header_test() {

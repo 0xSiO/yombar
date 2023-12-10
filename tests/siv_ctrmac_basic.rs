@@ -6,7 +6,7 @@ use cryptomator::{
 use jsonwebtoken::{TokenData, Validation};
 
 #[test]
-pub fn basic_properties() {
+pub fn siv_ctrmac_basic() {
     // Check vault import
     let vault = Vault::open(
         "tests/fixtures/vault_v8_siv_ctrmac/vault.cryptomator",
@@ -46,6 +46,8 @@ pub fn basic_properties() {
 
     assert_eq!(decoded_config.header, vault.config().header);
     assert_eq!(decoded_config.claims, vault.config().claims);
+
+    // TODO: Check directory ID hashing
 
     // Check file name encryption/decryption
     let cryptor = Cryptor::new(key);

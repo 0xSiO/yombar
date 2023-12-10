@@ -48,19 +48,47 @@ pub fn basic_properties() {
 
     let cryptor = Cryptor::new(key);
 
-    // Check filename encryption
+    // Check filename encryption/decryption
     assert_eq!(
         cryptor.encrypt_name("test_file.txt", ""),
         "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
     );
-
+    assert_eq!(
+        cryptor.decrypt_name("TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=", ""),
+        "test_file.txt"
+    );
     assert_eq!(
         cryptor.encrypt_name("test_link", ""),
         "tne_IIoGP9L5vHPlj1I71SPX2HvJFQudTg=="
     );
-
+    assert_eq!(
+        cryptor.decrypt_name("tne_IIoGP9L5vHPlj1I71SPX2HvJFQudTg==", ""),
+        "test_link"
+    );
     assert_eq!(
         cryptor.encrypt_name("test_dir", ""),
         "v_CfBHr_pkOa5T7OQB-QYLzKm9TMrU-N"
+    );
+    assert_eq!(
+        cryptor.decrypt_name("v_CfBHr_pkOa5T7OQB-QYLzKm9TMrU-N", ""),
+        "test_dir"
+    );
+
+    // Check file content encryption/decryption
+    let plaintext = b"this is a test file with some text in it\n";
+    let ciphertext = std::fs::read(
+        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+    )
+    .unwrap();
+
+    let header = cryptor.decrypt_header(ciphertext[..88].to_vec());
+
+    let new_ciphertext = cryptor.encrypt_chunk(plaintext.to_vec(), &header, 0);
+    // TODO: This will fail once we start generating random nonces per chunk
+    assert_eq!(new_ciphertext, ciphertext[88..]);
+
+    assert_eq!(
+        cryptor.decrypt_chunk(ciphertext[88..].to_vec(), &header, 0),
+        plaintext
     );
 }

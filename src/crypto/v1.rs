@@ -60,11 +60,14 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(&self, nonce: [u8; NONCE_LEN], message: &[u8]) -> Vec<u8> {
+    fn aes_ctr(
+        &self,
+        message: &[u8],
+        key: &[u8; SUBKEY_LENGTH],
+        nonce: [u8; NONCE_LEN],
+    ) -> Vec<u8> {
         let mut message = message.to_vec();
-        Ctr128BE::<Aes256>::new(self.key.enc_key().into(), &nonce.into())
-            .apply_keystream(&mut message);
-
+        Ctr128BE::<Aes256>::new(key.into(), &nonce.into()).apply_keystream(&mut message);
         message
     }
 
@@ -119,7 +122,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
     fn encrypt_header(&self, header: FileHeader) -> Vec<u8> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);
-        buffer.extend(self.aes_ctr(header.nonce, &header.payload));
+        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), header.nonce));
         buffer.extend(util::hmac(&buffer, self.key));
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
@@ -130,19 +133,24 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
     fn decrypt_header(&self, encrypted_header: Vec<u8>) -> FileHeader {
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
             // TODO: Error
+            println!("encrypted header length invalid!");
         }
 
         // First, verify the HMAC
         let (nonce_and_payload, expected_mac) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
         if util::hmac(nonce_and_payload, self.key) != expected_mac {
             // TODO: Error
+            println!("encrypted header hmac invalid!");
         }
 
         // Next, decrypt the payload
         let (nonce, payload) = nonce_and_payload.split_at(NONCE_LEN);
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-        let payload: [u8; PAYLOAD_LEN] = self.aes_ctr(nonce, payload).try_into().unwrap();
+        let payload: [u8; PAYLOAD_LEN] = self
+            .aes_ctr(payload, self.key.enc_key(), nonce)
+            .try_into()
+            .unwrap();
 
         FileHeader { nonce, payload }
     }
@@ -150,11 +158,18 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
     fn encrypt_chunk(&self, chunk: Vec<u8>, header: &FileHeader, chunk_number: usize) -> Vec<u8> {
         if chunk.is_empty() || chunk.len() > CHUNK_LEN {
             // TODO: Error
+            println!("chunk length invalid!");
         }
 
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
-        buffer.extend(header.nonce);
-        buffer.extend(self.aes_ctr(header.nonce, &chunk));
+        // TODO: For temporary testing purposes - later, generate a random nonce
+        let nonce: [u8; 16] = [
+            0xa5, 0xbe, 0xe9, 0xc7, 0xac, 0x21, 0x72, 0xf, 0xfd, 0xef, 0x47, 0x6e, 0x2f, 0xeb,
+            0x3d, 0x4c,
+        ];
+        buffer.extend(nonce);
+        // TODO: Nicer way to get the header content key
+        buffer.extend(self.aes_ctr(&chunk, header.payload[8..].try_into().unwrap(), nonce));
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
         debug_assert!(buffer.len() <= ENCRYPTED_CHUNK_LEN);
@@ -172,6 +187,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
             || encrypted_chunk.len() > ENCRYPTED_CHUNK_LEN
         {
             // TODO: Error
+            println!("encrypted chunk length invalid!");
         }
 
         // First, verify the HMAC
@@ -179,6 +195,7 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
             encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
         if self.chunk_hmac(nonce_and_chunk, header, chunk_number) != expected_mac {
             // TODO: Error
+            println!("encrypted chunk hmac invalid!");
         }
 
         // Next, decrypt the chunk
@@ -186,7 +203,8 @@ impl<'k> FileCryptor<FileHeader> for Cryptor<'k> {
         // Ok to convert to sized array - we know the length at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
 
-        self.aes_ctr(nonce, chunk)
+        // TODO: Nicer way to get the header content key
+        self.aes_ctr(chunk, header.payload[8..].try_into().unwrap(), nonce)
     }
 
     fn hash_dir_id(&self, dir_id: &str) -> String {
@@ -278,7 +296,10 @@ mod tests {
         let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
 
         let ciphertext = cryptor.encrypt_chunk(chunk.clone(), &header, 2);
-        assert_eq!(Base64::encode_string(&ciphertext), "ExMTExMTExMTExMTExMTExkKl5K4v0aLiTHQzjfbbG/aBKr9zewZUZbh7tCdbe6ObxsWu2s9voOZzef4nSoxAeXX2wBFQCd2KSr3ksYjzJFFLxyz85hUzXbDfQ==");
+        assert_eq!(
+            Base64::encode_string(&ciphertext),
+            "pb7px6whcg/970duL+s9TDOhnI8JCP1vGqj5j2jv3H1rhl0wxmKoD9i3KD16auAewNT6DF05uxzjkm9nDPwXJMpf+KrzRc/lf0n/DHqO/U2/7WD19N5LwmcP/g=="
+        );
         assert_eq!(cryptor.decrypt_chunk(ciphertext, &header, 2), chunk);
     }
 

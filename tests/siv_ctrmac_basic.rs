@@ -47,8 +47,6 @@ pub fn siv_ctrmac_basic() {
     assert_eq!(decoded_config.header, vault.config().header);
     assert_eq!(decoded_config.claims, vault.config().claims);
 
-    // TODO: Check directory ID hashing
-
     // Check file name encryption/decryption
     let cryptor = Cryptor::new(key);
 
@@ -63,16 +61,37 @@ pub fn siv_ctrmac_basic() {
         "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
     );
 
+    assert_eq!(
+        cryptor
+            .decrypt_name(
+                "3ZnmWpMsMPllwZCto1Gb0R7JvkiWcuV1Kmk6aczQPQ==",
+                "68fdafca-2315-4840-87bc-19c48baf897f"
+            )
+            .unwrap(),
+        "test_file_2.txt"
+    );
+    assert_eq!(
+        cryptor
+            .encrypt_name("test_file_2.txt", "68fdafca-2315-4840-87bc-19c48baf897f")
+            .unwrap(),
+        "3ZnmWpMsMPllwZCto1Gb0R7JvkiWcuV1Kmk6aczQPQ==",
+    );
+
     // Check file header encryption/decryption
     let ciphertext = std::fs::read(
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
     )
     .unwrap();
 
+    assert_eq!(
+        Base64::encode_string(&ciphertext),
+        "8OHhIeke26MS1E8KnbjGJqDyrZorAAxvNRrmZUqdHPTSpu42TXT4dFT5qbrd57PEaYUilUK9tAwD3gKNTWg9fmLvehEWBqDey+8FPgp4lUOkUlViiv1Q+aW+6cesIXIP/e9Hbi/rPUxjWnfHsKRLyzUyzHc+tU3DVZeKjMJnXoWWNqifsOnVFPeQPMjFpJ5h0mJWhUmuzSu+mWSeKGsPeT2GT5FkpD5hawtXD/q0WPyQ"
+    );
+
     let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
     assert_eq!(cryptor.encrypt_header(&header).unwrap(), &ciphertext[..88]);
 
-    // Check file content encryption/decryption
+    // Check file content decryption
     let plaintext = b"this is a test file with some text in it\n";
 
     assert_eq!(
@@ -88,6 +107,11 @@ pub fn siv_ctrmac_basic() {
     )
     .unwrap();
 
+    assert_eq!(
+        Base64::encode_string(&ciphertext),
+        "A7raPuW/ve4JGJcznX5GcOtKBX956uBrQRjUrO2loItd8VekyvbDfJP2mnCm5mnFnMoP8jRZD+GzzAJvOAo1Y7mQTCKIVTt3r6S8zjBe9LQ4FSz6ASiu7w=="
+    );
+
     let _ = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
     assert_eq!(&ciphertext[88..], b"");
 
@@ -101,6 +125,11 @@ pub fn siv_ctrmac_basic() {
         "tests/fixtures/vault_v8_siv_ctrmac/d/QQ/I7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE/dirid.c9r",
     )
     .unwrap();
+
+    assert_eq!(
+        Base64::encode_string(&ciphertext),
+        "kevHWULbQN6e9NYLNLM9psqkEfxibHIsVlK7DMNgGzo+d31XncWBv1jqkVtIXEVzsVjFdcdE3QhPVdOAzRu7hJslfEMb2QAWTZsyr/cn6dQZkhLHyv+zO3qE7QPUefj9SNEJ/PqIS05Nb5dnqm963iPkAS823kPlhxkRn/VwvpS3Mb2K23mTG9/EECdKfEcdhhTgkfeuYxr6QBIniA52OQcoyiJuDa2DBDa6lw=="
+    );
 
     let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
     assert_eq!(

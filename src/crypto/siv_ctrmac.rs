@@ -3,7 +3,7 @@ use aes::{
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
-use base32ct::{Base32, Encoding as Base32Encoding};
+use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
@@ -230,7 +230,7 @@ impl<'k> FileCryptor<Header, Error> for Cryptor<'k> {
     fn hash_dir_id(&self, dir_id: &str) -> Result<String, Error> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
-        Ok(Base32::encode_string(&hash).to_ascii_uppercase())
+        Ok(Base32Upper::encode_string(&hash))
     }
 
     // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get

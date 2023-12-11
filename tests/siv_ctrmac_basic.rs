@@ -81,4 +81,41 @@ pub fn siv_ctrmac_basic() {
             .unwrap(),
         plaintext
     );
+
+    // Check root directory ID hashing
+    let ciphertext = std::fs::read(
+        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/dirid.c9r",
+    )
+    .unwrap();
+
+    let _ = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
+    assert_eq!(&ciphertext[88..], b"");
+
+    assert_eq!(
+        cryptor.hash_dir_id("").unwrap(),
+        "B3EO5WWODTDD254SS2TQWVAQKJAWPBKK"
+    );
+
+    // Check subdirectory ID hashing
+    let ciphertext = std::fs::read(
+        "tests/fixtures/vault_v8_siv_ctrmac/d/QQ/I7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE/dirid.c9r",
+    )
+    .unwrap();
+
+    println!("{}", Base64::encode_string(&ciphertext));
+
+    let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
+    assert_eq!(
+        cryptor
+            .decrypt_chunk(&ciphertext[88..], &header, 0)
+            .unwrap(),
+        b"68fdafca-2315-4840-87bc-19c48baf897f"
+    );
+
+    assert_eq!(
+        cryptor
+            .hash_dir_id("68fdafca-2315-4840-87bc-19c48baf897f")
+            .unwrap(),
+        "QQI7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE"
+    );
 }

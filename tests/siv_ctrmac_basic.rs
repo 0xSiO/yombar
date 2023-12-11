@@ -102,8 +102,6 @@ pub fn siv_ctrmac_basic() {
     )
     .unwrap();
 
-    println!("{}", Base64::encode_string(&ciphertext));
-
     let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
     assert_eq!(
         cryptor

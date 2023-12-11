@@ -81,7 +81,7 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_encrypt(
         &self,
         plaintext: &[u8],
-        associated_data: &[u8],
+        associated_data: &[&[u8]],
     ) -> Result<Vec<u8>, aes_siv::Error> {
         use aes_siv::KeyInit;
 
@@ -92,7 +92,7 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        Aes256Siv::new(&key.into()).encrypt([associated_data], plaintext)
+        Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)
     }
 
     fn aes_siv_decrypt(
@@ -238,7 +238,7 @@ impl<'k> FileCryptor<Header, Error> for Cryptor<'k> {
     fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, Error> {
         Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
             name.as_bytes(),
-            parent_dir_id.as_bytes(),
+            &[parent_dir_id.as_bytes()],
         )?))
     }
 
@@ -337,14 +337,14 @@ mod tests {
     #[test]
     fn dir_id_hash_test() {
         // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([193_u8; SUBKEY_LEN * 2]) };
+        let key = unsafe { MasterKey::from_bytes([0_u8; SUBKEY_LEN * 2]) };
         let cryptor = Cryptor::new(&key);
 
         assert_eq!(
             cryptor
-                .hash_dir_id("1ea7beac-ec4e-4fd7-8b77-07b79c2e7864")
+                .hash_dir_id("373067f5-71bd-48a8-ab1a-cd4dc1f62d03")
                 .unwrap(),
-            "N7LRT3C5NDVBB5356OJN32RP2MDD4RIH"
+            "6NCUUJAQ6BMB33DOEGUQZHX7ZBDIT76T"
         );
     }
 

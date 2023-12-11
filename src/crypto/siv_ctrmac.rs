@@ -144,7 +144,10 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl<'k> FileCryptor<Header, Error> for Cryptor<'k> {
+impl<'k> FileCryptor for Cryptor<'k> {
+    type Header = Header;
+    type Error = Error;
+
     fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(header.nonce);

@@ -57,7 +57,7 @@ impl Header {
 }
 
 impl FileHeader for Header {
-    const HEADER_SIZE: usize = ENCRYPTED_HEADER_LEN;
+    const ENCRYPTED_HEADER_LEN: usize = ENCRYPTED_HEADER_LEN;
 }
 
 #[derive(Clone, Copy)]
@@ -151,7 +151,8 @@ impl<'k> FileCryptor for Cryptor<'k> {
     type Header = Header;
     type Error = Error;
 
-    const CHUNK_SIZE: usize = MAX_ENCRYPTED_CHUNK_LEN;
+    const MAX_CHUNK_LEN: usize = MAX_CHUNK_LEN;
+    const MAX_ENCRYPTED_CHUNK_LEN: usize = MAX_ENCRYPTED_CHUNK_LEN;
 
     fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);

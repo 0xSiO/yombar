@@ -1,12 +1,12 @@
 use std::{
     fs::{self, File},
-    io::{BufReader, Read},
+    io::{BufReader, Read, Write},
 };
 
 use base64ct::{Base64, Encoding};
 use cryptomator::{
     crypto::{siv_ctrmac::Cryptor, FileCryptor},
-    io::EncryptedStream,
+    io::{DecryptStream, EncryptStream},
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
 use jsonwebtoken::{TokenData, Validation};
@@ -155,8 +155,8 @@ pub fn siv_ctrmac_basic() {
         "QQI7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE"
     );
 
-    // Check reading entire files
-    let mut stream = EncryptedStream::new(
+    // Check reading smaller files
+    let mut stream = DecryptStream::new(
         cryptor,
         BufReader::new(
             File::open(
@@ -166,11 +166,12 @@ pub fn siv_ctrmac_basic() {
         ),
     );
 
-    let mut plaintext = String::new();
-    stream.read_to_string(&mut plaintext).unwrap();
-    assert_eq!(plaintext, "this is a test file with some text in it\n");
+    let mut decrypted = String::new();
+    stream.read_to_string(&mut decrypted).unwrap();
+    assert_eq!(decrypted, "this is a test file with some text in it\n");
 
-    let mut stream = EncryptedStream::new(
+    // Check reading larger files
+    let mut stream = DecryptStream::new(
         cryptor,
         BufReader::new(
             File::open(
@@ -180,10 +181,51 @@ pub fn siv_ctrmac_basic() {
         ),
     );
 
-    let mut plaintext = Vec::new();
-    stream.read_to_end(&mut plaintext).unwrap();
+    let mut decrypted = Vec::new();
+    stream.read_to_end(&mut decrypted).unwrap();
     assert_eq!(
-        plaintext,
+        decrypted,
         fs::read("tests/fixtures/test_image.jpg").unwrap()
     );
+
+    // Check writing smaller files
+    let ciphertext = std::fs::read(
+        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+    )
+    .unwrap();
+    let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
+
+    let mut buffer = Vec::new();
+    let mut stream = EncryptStream::new(cryptor, header, &mut buffer);
+    stream
+        .write_all(b"this is a test file with some text in it\n")
+        .unwrap();
+    stream.flush().unwrap();
+
+    assert_eq!(buffer.len(), ciphertext.len());
+
+    let mut stream = DecryptStream::new(cryptor, buffer.as_slice());
+    let mut decrypted = String::new();
+    stream.read_to_string(&mut decrypted).unwrap();
+    assert_eq!(decrypted, "this is a test file with some text in it\n");
+
+    // Check writing larger files
+    let ciphertext = std::fs::read(
+        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
+    )
+    .unwrap();
+    let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
+    let image_data = fs::read("tests/fixtures/test_image.jpg").unwrap();
+
+    let mut buffer = Vec::new();
+    let mut stream = EncryptStream::new(cryptor, header, &mut buffer);
+    stream.write_all(&image_data).unwrap();
+    stream.flush().unwrap();
+
+    assert_eq!(buffer.len(), ciphertext.len());
+
+    let mut stream = DecryptStream::new(cryptor, buffer.as_slice());
+    let mut decrypted = Vec::new();
+    stream.read_to_end(&mut decrypted).unwrap();
+    assert_eq!(decrypted, image_data);
 }

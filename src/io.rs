@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{self, Read},
+    io::{self, Read, Write},
 };
 
 use crate::crypto::{FileCryptor, FileHeader};
@@ -23,16 +23,16 @@ fn try_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> io::Res
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub struct EncryptedStream<C: FileCryptor, R: Read> {
+pub struct DecryptStream<C: FileCryptor, R: Read> {
     cryptor: C,
     inner: R,
     header: Option<C::Header>,
     chunk_number: usize,
     eof: bool,
-    buffered_cleartext: VecDeque<u8>,
+    buffer: VecDeque<u8>,
 }
 
-impl<C: FileCryptor, R: Read> EncryptedStream<C, R> {
+impl<C: FileCryptor, R: Read> DecryptStream<C, R> {
     pub fn new(cryptor: C, inner: R) -> Self {
         Self {
             cryptor,
@@ -40,16 +40,16 @@ impl<C: FileCryptor, R: Read> EncryptedStream<C, R> {
             header: None,
             chunk_number: 0,
             eof: false,
-            buffered_cleartext: VecDeque::with_capacity(C::CHUNK_SIZE),
+            buffer: VecDeque::with_capacity(C::MAX_CHUNK_LEN),
         }
     }
 }
 
-impl<C: FileCryptor, R: Read> Read for EncryptedStream<C, R> {
+impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // The file header must be read exactly once
         if self.header.is_none() {
-            let mut encrypted_header = vec![0; C::Header::HEADER_SIZE];
+            let mut encrypted_header = vec![0; C::Header::ENCRYPTED_HEADER_LEN];
             self.inner.read_exact(&mut encrypted_header)?;
             self.header.replace(
                 self.cryptor
@@ -59,15 +59,15 @@ impl<C: FileCryptor, R: Read> Read for EncryptedStream<C, R> {
         }
 
         // If we have leftover data from a previous read, write that to buf
-        if !self.buffered_cleartext.is_empty() {
-            return self.buffered_cleartext.read(buf);
+        if !self.buffer.is_empty() {
+            return self.buffer.read(buf);
         }
 
         if self.eof {
             return Ok(0);
         }
 
-        let mut ciphertext_chunk = vec![0; C::CHUNK_SIZE];
+        let mut ciphertext_chunk = vec![0; C::MAX_ENCRYPTED_CHUNK_LEN];
         match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
             // Got EOF immediately
             (false, 0) => {
@@ -86,12 +86,93 @@ impl<C: FileCryptor, R: Read> Read for EncryptedStream<C, R> {
         // Safe to unwrap, header has been read by now
         let header = self.header.as_ref().unwrap();
 
-        self.buffered_cleartext.extend(
+        self.buffer.extend(
             self.cryptor
                 .decrypt_chunk(&ciphertext_chunk, header, self.chunk_number)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
         self.chunk_number += 1;
-        self.buffered_cleartext.read(buf)
+        self.buffer.read(buf)
+    }
+}
+
+#[allow(dead_code)]
+pub struct EncryptStream<C: FileCryptor, W: Write> {
+    cryptor: C,
+    inner: W,
+    header: C::Header,
+    header_written: bool,
+    chunk_number: usize,
+    eof: bool,
+    buffer: VecDeque<u8>,
+}
+
+impl<C: FileCryptor, W: Write> EncryptStream<C, W> {
+    pub fn new(cryptor: C, header: C::Header, inner: W) -> Self {
+        Self {
+            cryptor,
+            inner,
+            // TODO: Use Header::new? i.e. do we re-encrypt everything with a new content key?
+            header,
+            header_written: false,
+            chunk_number: 0,
+            eof: false,
+            buffer: VecDeque::with_capacity(C::MAX_CHUNK_LEN),
+        }
+    }
+}
+
+impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // The file header must be written exactly once
+        if !self.header_written {
+            let header_bytes = self
+                .cryptor
+                .encrypt_header(&self.header)
+                .map_err(io::Error::other)?;
+            self.inner.write_all(&header_bytes)?;
+            self.header_written = true;
+        }
+
+        if self.eof {
+            return Ok(0);
+        }
+
+        self.buffer.extend(buf);
+
+        // Write as many full chunks as possible
+        while self.buffer.len() >= C::MAX_CHUNK_LEN {
+            let mut chunk = vec![0; C::MAX_CHUNK_LEN];
+            self.buffer.read_exact(&mut chunk)?;
+            self.inner.write_all(
+                &self
+                    .cryptor
+                    .encrypt_chunk(&chunk, &self.header, self.chunk_number)
+                    .map_err(io::Error::other)?,
+            )?;
+            self.chunk_number += 1;
+        }
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        // Write partial chunk if any leftover data in buffer
+        if !self.buffer.is_empty() {
+            debug_assert!(self.buffer.len() < C::MAX_CHUNK_LEN);
+            let mut chunk = vec![0; self.buffer.len()];
+            self.buffer.read_exact(&mut chunk)?;
+            self.inner.write_all(
+                &self
+                    .cryptor
+                    .encrypt_chunk(&chunk, &self.header, self.chunk_number)
+                    .map_err(io::Error::other)?,
+            )?;
+            self.chunk_number += 1;
+            // Because we wrote a partial chunk, this has to be the last one
+            self.eof = true;
+        }
+
+        self.inner.flush()
     }
 }

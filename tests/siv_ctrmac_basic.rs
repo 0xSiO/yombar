@@ -1,3 +1,5 @@
+use std::fs;
+
 use base64ct::{Base64, Encoding};
 use cryptomator::{
     crypto::{siv_ctrmac::Cryptor, FileCryptor},
@@ -13,6 +15,11 @@ pub fn siv_ctrmac_basic() {
         String::from("password"),
     )
     .unwrap();
+
+    assert_eq!(
+        vault.path(),
+        fs::canonicalize("./tests/fixtures/vault_v8_siv_ctrmac").unwrap()
+    );
 
     assert_eq!(
         vault.config().claims.jti.to_string(),

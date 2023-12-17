@@ -1,10 +1,19 @@
-use std::{fs, path::Path};
+use std::{
+    fs::{self, OpenOptions},
+    io,
+    path::{Path, PathBuf},
+};
 
 use jsonwebtoken::{TokenData, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::*, util, MasterKey, WrappedKey};
+use crate::{
+    crypto::{siv_ctrmac, FileCryptor},
+    error::*,
+    fs::EncryptedFile,
+    util, MasterKey, WrappedKey,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CipherCombo {
@@ -26,6 +35,7 @@ pub struct VaultConfig {
 }
 
 pub struct Vault {
+    path: PathBuf,
     config: TokenData<VaultConfig>,
     master_key: MasterKey,
 }
@@ -76,10 +86,18 @@ impl Vault {
                 other => return Err(VaultUnlockError::UnsupportedCipherCombo(other)),
             }
 
-            Ok(Self { config, master_key })
+            Ok(Self {
+                path: config_dir.canonicalize()?,
+                config,
+                master_key,
+            })
         } else {
             Err(VaultUnlockError::UnsupportedKeyUri(master_key_uri))
         }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     pub fn config(&self) -> &TokenData<VaultConfig> {
@@ -88,5 +106,25 @@ impl Vault {
 
     pub fn master_key(&self) -> &MasterKey {
         &self.master_key
+    }
+
+    pub fn cryptor(&self) -> impl FileCryptor + '_ {
+        match self.config().claims.cipher_combo {
+            CipherCombo::SivCtrMac => siv_ctrmac::Cryptor::new(self.master_key()),
+            CipherCombo::SivGcm => todo!(),
+        }
+    }
+
+    // TODO: Translate cleartext path to obfuscated path
+    pub fn open_file(&self, path: impl AsRef<Path>) -> io::Result<EncryptedFile> {
+        let _dir = match path.as_ref().parent() {
+            Some(p) if p.parent().is_some() => PathBuf::from(p),
+            // Always use empty path for root
+            _ => PathBuf::new(),
+        };
+
+        let _file = OpenOptions::new().read(true).write(true).open(path)?;
+
+        todo!()
     }
 }

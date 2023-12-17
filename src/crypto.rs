@@ -6,7 +6,7 @@ pub trait FileHeader {
 
 pub trait FileCryptor {
     type Header: FileHeader;
-    type Error: std::error::Error;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     const CHUNK_SIZE: usize;
 

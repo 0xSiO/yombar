@@ -51,8 +51,11 @@ impl<C: FileCryptor, R: Read> Read for EncryptedStream<C, R> {
         if self.header.is_none() {
             let mut encrypted_header = vec![0; C::Header::HEADER_SIZE];
             self.inner.read_exact(&mut encrypted_header)?;
-            self.header
-                .replace(self.cryptor.decrypt_header(&encrypted_header).unwrap());
+            self.header.replace(
+                self.cryptor
+                    .decrypt_header(&encrypted_header)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+            );
         }
 
         // If we have leftover data from a previous read, write that to buf
@@ -86,7 +89,7 @@ impl<C: FileCryptor, R: Read> Read for EncryptedStream<C, R> {
         self.buffered_cleartext.extend(
             self.cryptor
                 .decrypt_chunk(&ciphertext_chunk, header, self.chunk_number)
-                .unwrap(),
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
         self.chunk_number += 1;
         self.buffered_cleartext.read(buf)

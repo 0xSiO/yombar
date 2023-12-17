@@ -56,8 +56,11 @@ impl Header {
     }
 }
 
-impl FileHeader for Header {}
+impl FileHeader for Header {
+    const HEADER_SIZE: usize = ENCRYPTED_HEADER_LEN;
+}
 
+#[derive(Clone, Copy)]
 pub struct Cryptor<'k> {
     key: &'k MasterKey,
 }
@@ -147,6 +150,8 @@ impl<'k> Cryptor<'k> {
 impl<'k> FileCryptor for Cryptor<'k> {
     type Header = Header;
     type Error = Error;
+
+    const CHUNK_SIZE: usize = MAX_ENCRYPTED_CHUNK_LEN;
 
     fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
@@ -259,8 +264,6 @@ mod tests {
     use base64ct::Base64;
 
     use super::*;
-
-    // For other tests, see tests/siv_ctrmac_basic.rs
 
     #[test]
     fn file_chunk_test() {

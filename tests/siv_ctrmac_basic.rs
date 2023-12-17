@@ -1,8 +1,12 @@
-use std::fs;
+use std::{
+    fs::{self, File},
+    io::{BufReader, Read},
+};
 
 use base64ct::{Base64, Encoding};
 use cryptomator::{
     crypto::{siv_ctrmac::Cryptor, FileCryptor},
+    io::EncryptedStream,
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
 use jsonwebtoken::{TokenData, Validation};
@@ -99,13 +103,11 @@ pub fn siv_ctrmac_basic() {
     assert_eq!(cryptor.encrypt_header(&header).unwrap(), &ciphertext[..88]);
 
     // Check file content decryption
-    let plaintext = b"this is a test file with some text in it\n";
-
     assert_eq!(
         cryptor
             .decrypt_chunk(&ciphertext[88..], &header, 0)
             .unwrap(),
-        plaintext
+        b"this is a test file with some text in it\n"
     );
 
     // Check root directory ID hashing
@@ -151,5 +153,37 @@ pub fn siv_ctrmac_basic() {
             .hash_dir_id("68fdafca-2315-4840-87bc-19c48baf897f")
             .unwrap(),
         "QQI7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE"
+    );
+
+    // Check reading entire files
+    let mut stream = EncryptedStream::new(
+        cryptor,
+        BufReader::new(
+            File::open(
+                "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+            )
+            .unwrap(),
+        ),
+    );
+
+    let mut plaintext = String::new();
+    stream.read_to_string(&mut plaintext).unwrap();
+    assert_eq!(plaintext, "this is a test file with some text in it\n");
+
+    let mut stream = EncryptedStream::new(
+        cryptor,
+        BufReader::new(
+            File::open(
+                "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
+            )
+            .unwrap(),
+        ),
+    );
+
+    let mut plaintext = Vec::new();
+    stream.read_to_end(&mut plaintext).unwrap();
+    assert_eq!(
+        plaintext,
+        fs::read("tests/fixtures/test_image.jpg").unwrap()
     );
 }

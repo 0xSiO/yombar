@@ -1,10 +1,14 @@
 pub mod siv_ctrmac;
 
-pub trait FileHeader {}
+pub trait FileHeader {
+    const HEADER_SIZE: usize;
+}
 
 pub trait FileCryptor {
     type Header: FileHeader;
     type Error: std::error::Error;
+
+    const CHUNK_SIZE: usize;
 
     fn encrypt_header(&self, header: &Self::Header) -> Result<Vec<u8>, Self::Error>;
 

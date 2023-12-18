@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 pub mod siv_ctrmac;
 
 pub trait FileHeader {
@@ -29,7 +31,7 @@ pub trait FileCryptor {
         chunk_number: usize,
     ) -> Result<Vec<u8>, Self::Error>;
 
-    fn hash_dir_id(&self, dir_id: &str) -> Result<String, Self::Error>;
+    fn hash_dir_id(&self, dir_id: &str) -> Result<PathBuf, Self::Error>;
 
     fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, Self::Error>;
 

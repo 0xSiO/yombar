@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use aes::{
     cipher::{generic_array::GenericArray, KeyIvInit, StreamCipher, StreamCipherError},
     Aes256,
@@ -236,10 +238,12 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(self.aes_ctr(chunk, &header.content_key(), &nonce)?)
     }
 
-    fn hash_dir_id(&self, dir_id: &str) -> Result<String, Error> {
+    fn hash_dir_id(&self, dir_id: &str) -> Result<PathBuf, Error> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
-        Ok(Base32Upper::encode_string(&hash))
+        let base32 = Base32Upper::encode_string(&hash);
+        let (first, second) = base32.split_at(2);
+        Ok(PathBuf::from(first).join(second))
     }
 
     // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get

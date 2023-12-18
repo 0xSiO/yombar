@@ -1,6 +1,5 @@
 use std::{
-    fs::{self, OpenOptions},
-    io,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -11,7 +10,6 @@ use uuid::Uuid;
 use crate::{
     crypto::{siv_ctrmac, FileCryptor},
     error::*,
-    fs::EncryptedFile,
     util, MasterKey, WrappedKey,
 };
 
@@ -113,18 +111,5 @@ impl Vault {
             CipherCombo::SivCtrMac => siv_ctrmac::Cryptor::new(self.master_key()),
             CipherCombo::SivGcm => todo!(),
         }
-    }
-
-    // TODO: Translate cleartext path to obfuscated path
-    pub fn open_file(&self, path: impl AsRef<Path>) -> io::Result<EncryptedFile> {
-        let _dir = match path.as_ref().parent() {
-            Some(p) if p.parent().is_some() => PathBuf::from(p),
-            // Always use empty path for root
-            _ => PathBuf::new(),
-        };
-
-        let _file = OpenOptions::new().read(true).write(true).open(path)?;
-
-        todo!()
     }
 }

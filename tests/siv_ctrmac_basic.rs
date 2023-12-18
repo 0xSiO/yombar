@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File},
     io::{BufReader, Read, Write},
+    path::PathBuf,
 };
 
 use base64ct::{Base64, Encoding};
@@ -126,7 +127,7 @@ pub fn siv_ctrmac_basic() {
 
     assert_eq!(
         cryptor.hash_dir_id("").unwrap(),
-        "B3EO5WWODTDD254SS2TQWVAQKJAWPBKK"
+        PathBuf::from("B3").join("EO5WWODTDD254SS2TQWVAQKJAWPBKK")
     );
 
     // Check subdirectory ID hashing
@@ -152,7 +153,7 @@ pub fn siv_ctrmac_basic() {
         cryptor
             .hash_dir_id("68fdafca-2315-4840-87bc-19c48baf897f")
             .unwrap(),
-        "QQI7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE"
+        PathBuf::from("QQ").join("I7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE")
     );
 
     // Check reading smaller files

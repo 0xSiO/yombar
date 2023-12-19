@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use aes::{
-    cipher::{generic_array::GenericArray, KeyIvInit, StreamCipher, StreamCipherError},
+    cipher::{KeyIvInit, StreamCipher, StreamCipherError},
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
@@ -103,7 +103,7 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_decrypt(
         &self,
         ciphertext: &[u8],
-        associated_data: &[u8],
+        associated_data: &[&[u8]],
     ) -> Result<Vec<u8>, aes_siv::Error> {
         use aes_siv::KeyInit;
 
@@ -114,9 +114,7 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        debug_assert_eq!(key.len(), SUBKEY_LEN * 2);
-
-        Aes256Siv::new(GenericArray::from_slice(&key)).decrypt([associated_data], ciphertext)
+        Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &Header, chunk_number: usize) -> Vec<u8> {
@@ -259,7 +257,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
             &Base64Url::decode_vec(encrypted_name)?,
-            parent_dir_id.as_bytes(),
+            &[parent_dir_id.as_bytes()],
         )?)?)
     }
 }

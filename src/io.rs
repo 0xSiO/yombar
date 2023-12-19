@@ -53,7 +53,7 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
             self.inner.read_exact(&mut encrypted_header)?;
             self.header.replace(
                 self.cryptor
-                    .decrypt_header(&encrypted_header)
+                    .decrypt_header(encrypted_header)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
             );
         }
@@ -88,7 +88,7 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
 
         self.buffer.extend(
             self.cryptor
-                .decrypt_chunk(&ciphertext_chunk, header, self.chunk_number)
+                .decrypt_chunk(ciphertext_chunk, header, self.chunk_number)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
         self.chunk_number += 1;
@@ -147,7 +147,7 @@ impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
             self.inner.write_all(
                 &self
                     .cryptor
-                    .encrypt_chunk(&chunk, &self.header, self.chunk_number)
+                    .encrypt_chunk(chunk, &self.header, self.chunk_number)
                     .map_err(io::Error::other)?,
             )?;
             self.chunk_number += 1;
@@ -165,7 +165,7 @@ impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
             self.inner.write_all(
                 &self
                     .cryptor
-                    .encrypt_chunk(&chunk, &self.header, self.chunk_number)
+                    .encrypt_chunk(chunk, &self.header, self.chunk_number)
                     .map_err(io::Error::other)?,
             )?;
             self.chunk_number += 1;

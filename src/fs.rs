@@ -54,11 +54,7 @@ impl<'v> EncryptedFileSystem<'v> {
             .vault
             .cryptor()
             .encrypt_name(
-                &cleartext_path
-                    .as_ref()
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy(),
+                cleartext_path.as_ref().file_name().unwrap(),
                 parent_dir_id.as_ref(),
             )
             .unwrap())

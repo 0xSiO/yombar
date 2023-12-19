@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ffi::OsStr, path::PathBuf};
 
 use aes::{
     cipher::{KeyIvInit, StreamCipher, StreamCipherError},
@@ -163,7 +163,8 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(buffer)
     }
 
-    fn decrypt_header(&self, encrypted_header: &[u8]) -> Result<Header, Error> {
+    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<Header, Error> {
+        let encrypted_header = encrypted_header.as_ref();
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
             return Err(Error::InvalidHeaderLen(encrypted_header.len()));
         }
@@ -192,10 +193,11 @@ impl<'k> FileCryptor for Cryptor<'k> {
 
     fn encrypt_chunk(
         &self,
-        chunk: &[u8],
+        chunk: impl AsRef<[u8]>,
         header: &Header,
         chunk_number: usize,
     ) -> Result<Vec<u8>, Error> {
+        let chunk = chunk.as_ref();
         if chunk.is_empty() || chunk.len() > MAX_CHUNK_LEN {
             return Err(Error::InvalidChunkLen(chunk.len()));
         }
@@ -207,10 +209,11 @@ impl<'k> FileCryptor for Cryptor<'k> {
 
     fn decrypt_chunk(
         &self,
-        encrypted_chunk: &[u8],
+        encrypted_chunk: impl AsRef<[u8]>,
         header: &Header,
         chunk_number: usize,
     ) -> Result<Vec<u8>, Error> {
+        let encrypted_chunk = encrypted_chunk.as_ref();
         if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
             || encrypted_chunk.len() > MAX_ENCRYPTED_CHUNK_LEN
         {
@@ -236,8 +239,8 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(self.aes_ctr(chunk, &header.content_key(), &nonce)?)
     }
 
-    fn hash_dir_id(&self, dir_id: &str) -> Result<PathBuf, Error> {
-        let ciphertext = self.aes_siv_encrypt(dir_id.as_bytes(), &[])?;
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, Error> {
+        let ciphertext = self.aes_siv_encrypt(dir_id.as_ref().as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         let base32 = Base32Upper::encode_string(&hash);
         let (first, second) = base32.split_at(2);
@@ -246,18 +249,27 @@ impl<'k> FileCryptor for Cryptor<'k> {
 
     // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get
     // a unique binary representation." https://github.com/unicode-rs/unicode-normalization
-    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, Error> {
+    fn encrypt_name(
+        &self,
+        name: impl AsRef<OsStr>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> Result<String, Error> {
         Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
-            name.as_bytes(),
-            &[parent_dir_id.as_bytes()],
+            // TODO: Is it okay to use lossy UTF-8 conversion?
+            name.as_ref().to_string_lossy().as_bytes(),
+            &[parent_dir_id.as_ref().as_bytes()],
         )?))
     }
 
-    fn decrypt_name(&self, encrypted_name: &str, parent_dir_id: &str) -> Result<String, Error> {
+    fn decrypt_name(
+        &self,
+        encrypted_name: impl AsRef<str>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> Result<String, Error> {
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
-            &Base64Url::decode_vec(encrypted_name)?,
-            &[parent_dir_id.as_bytes()],
+            &Base64Url::decode_vec(encrypted_name.as_ref())?,
+            &[parent_dir_id.as_ref().as_bytes()],
         )?)?)
     }
 }

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ffi::OsStr, path::PathBuf};
 
 pub mod siv_ctrmac;
 
@@ -15,29 +15,36 @@ pub trait FileCryptor {
 
     fn encrypt_header(&self, header: &Self::Header) -> Result<Vec<u8>, Self::Error>;
 
-    fn decrypt_header(&self, encrypted_header: &[u8]) -> Result<Self::Header, Self::Error>;
+    fn decrypt_header(
+        &self,
+        encrypted_header: impl AsRef<[u8]>,
+    ) -> Result<Self::Header, Self::Error>;
 
     fn encrypt_chunk(
         &self,
-        chunk: &[u8],
+        chunk: impl AsRef<[u8]>,
         header: &Self::Header,
         chunk_number: usize,
     ) -> Result<Vec<u8>, Self::Error>;
 
     fn decrypt_chunk(
         &self,
-        encrypted_chunk: &[u8],
+        encrypted_chunk: impl AsRef<[u8]>,
         header: &Self::Header,
         chunk_number: usize,
     ) -> Result<Vec<u8>, Self::Error>;
 
-    fn hash_dir_id(&self, dir_id: &str) -> Result<PathBuf, Self::Error>;
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, Self::Error>;
 
-    fn encrypt_name(&self, name: &str, parent_dir_id: &str) -> Result<String, Self::Error>;
+    fn encrypt_name(
+        &self,
+        name: impl AsRef<OsStr>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> Result<String, Self::Error>;
 
     fn decrypt_name(
         &self,
-        encrypted_name: &str,
-        parent_dir_id: &str,
+        encrypted_name: impl AsRef<str>,
+        parent_dir_id: impl AsRef<str>,
     ) -> Result<String, Self::Error>;
 }

@@ -25,10 +25,8 @@ impl<'v> EncryptedFileSystem<'v> {
 
     fn decrypt_file_to_string(&self, ciphertext_path: impl AsRef<Path>) -> io::Result<String> {
         let file = File::open(ciphertext_path)?;
-        // TODO: This is an overestimate of the cleartext size
-        let size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
-        let mut cleartext = String::with_capacity(size);
-        DecryptStream::new(self.vault.cryptor(), BufReader::new(file))
+        let mut cleartext = String::new();
+        BufReader::new(DecryptStream::new(self.vault.cryptor(), file))
             .read_to_string(&mut cleartext)?;
         Ok(cleartext)
     }

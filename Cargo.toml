@@ -16,7 +16,7 @@ base32ct = { version = "0.2.0", features = ["std"] }
 base64ct = { version = "1.6.0", features = ["std"] }
 ctr = { version = "0.9.0", features = ["std"] }
 hmac = "0.12.0"
-jsonwebtoken = { version = "8.3.0", default-features = false }
+jsonwebtoken = { version = "9.2.0", default-features = false }
 rand_core = { version = "*", features = ["std"] }
 scrypt = "0.11.0"
 serde = { version = "1.0.0", features = ["derive"] }
@@ -24,5 +24,5 @@ serde_json = "1.0.0"
 sha1 = "0.10.0"
 sha2 = "0.10.0"
 thiserror = "1.0.0"
-uuid = { version = "1.6.0", features = ["serde", "v4"] }
+uuid = { version = "1.7.0", features = ["serde", "v4"] }
 zeroize = { version = "1.7.0", features = ["std", "zeroize_derive"] }

@@ -2,6 +2,7 @@ use std::{
     fs::{self, File},
     io::{BufReader, Read, Write},
     path::PathBuf,
+    str::FromStr,
 };
 
 use base64ct::{Base64, Encoding};
@@ -11,6 +12,7 @@ use cryptomator::{
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
 use jsonwebtoken::{TokenData, Validation};
+use uuid::Uuid;
 
 #[test]
 pub fn siv_ctrmac_basic() {
@@ -27,12 +29,14 @@ pub fn siv_ctrmac_basic() {
     );
 
     assert_eq!(
-        vault.config().claims.jti.to_string(),
-        "3c34938f-8acb-4c41-9a48-7a8f3c42835a"
+        vault.config().claims,
+        VaultConfig {
+            jti: Uuid::from_str("3c34938f-8acb-4c41-9a48-7a8f3c42835a").unwrap(),
+            format: 8,
+            shortening_threshold: 220,
+            cipher_combo: CipherCombo::SivCtrMac
+        }
     );
-    assert_eq!(vault.config().claims.format, 8);
-    assert_eq!(vault.config().claims.shortening_threshold, 220);
-    assert_eq!(vault.config().claims.cipher_combo, CipherCombo::SivCtrMac);
 
     // Check key import
     let key = vault.master_key();

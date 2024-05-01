@@ -78,12 +78,6 @@ impl Vault {
                 other => return Err(VaultUnlockError::UnsupportedVaultFormat(other)),
             }
 
-            // TODO: Only SIV+CTR+HMAC combo is supported for now
-            match config.claims.cipher_combo {
-                CipherCombo::SivCtrMac => {}
-                other => return Err(VaultUnlockError::UnsupportedCipherCombo(other)),
-            }
-
             Ok(Self {
                 path: config_dir.canonicalize()?,
                 config,
@@ -109,7 +103,9 @@ impl Vault {
     pub fn cryptor(&self) -> impl FileCryptor + '_ {
         match self.config().claims.cipher_combo {
             CipherCombo::SivCtrMac => siv_ctrmac::Cryptor::new(self.master_key()),
-            CipherCombo::SivGcm => todo!(),
+            // TODO: Uncomment for fun with types
+            // CipherCombo::SivGcm => siv_gcm::Cryptor::new(self.master_key()),
+            _ => todo!(),
         }
     }
 }

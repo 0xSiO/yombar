@@ -1,36 +1,30 @@
 use std::{ffi::OsStr, path::PathBuf};
 
-use aes::{
-    cipher::{KeyIvInit, StreamCipher, StreamCipherError},
-    Aes256,
-};
+use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Tag};
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
-use ctr::Ctr128BE;
-use hmac::{Hmac, Mac};
-use rand_core::{self, OsRng, RngCore};
+use rand_core::{OsRng, RngCore};
 use sha1::{Digest, Sha1};
-use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::SivCtrMacCryptorError as Error, key::SUBKEY_LEN, util, MasterKey};
+use crate::{error::SivGcmCryptorError as Error, key::SUBKEY_LEN, MasterKey};
 
 use super::{FileCryptor, FileHeader};
 
 // General constants
-const NONCE_LEN: usize = 16;
-const MAC_LEN: usize = 32;
+const NONCE_LEN: usize = 12;
+const TAG_LEN: usize = 16;
 
 // File header constants
 const RESERVED_LEN: usize = 8;
 const CONTENT_KEY_LEN: usize = 32;
 const PAYLOAD_LEN: usize = RESERVED_LEN + CONTENT_KEY_LEN;
-const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + MAC_LEN;
+const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + TAG_LEN;
 
 // File content constants
 const MAX_CHUNK_LEN: usize = 32 * 1024;
-const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + MAC_LEN;
+const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + TAG_LEN;
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Header {
@@ -72,14 +66,42 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(
+    fn aes_gcm_encrypt(
         &self,
         message: &[u8],
         key: &[u8; SUBKEY_LEN],
         nonce: &[u8; NONCE_LEN],
-    ) -> Result<Vec<u8>, StreamCipherError> {
+        associated_data: &[u8],
+    ) -> Result<(Vec<u8>, Tag), aes_gcm::Error> {
+        use aes_gcm::KeyInit;
+
         let mut message = message.to_vec();
-        Ctr128BE::<Aes256>::new(key.into(), nonce.into()).try_apply_keystream(&mut message)?;
+        let tag = Aes256Gcm::new(key.into()).encrypt_in_place_detached(
+            nonce.into(),
+            associated_data,
+            &mut message,
+        )?;
+        Ok((message, tag))
+    }
+
+    fn aes_gcm_decrypt(
+        &self,
+        ciphertext: &[u8],
+        key: &[u8; SUBKEY_LEN],
+        nonce: &[u8; NONCE_LEN],
+        associated_data: &[u8],
+        tag: &[u8; TAG_LEN],
+    ) -> Result<Vec<u8>, aes_gcm::Error> {
+        use aes_gcm::KeyInit;
+
+        let mut message = ciphertext.to_vec();
+        Aes256Gcm::new(key.into()).decrypt_in_place_detached(
+            nonce.into(),
+            associated_data,
+            &mut message,
+            tag.into(),
+        )?;
+
         Ok(message)
     }
 
@@ -117,29 +139,23 @@ impl<'k> Cryptor<'k> {
         Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)
     }
 
-    fn chunk_hmac(&self, data: &[u8], header: &Header, chunk_number: usize) -> Vec<u8> {
-        Hmac::<Sha256>::new_from_slice(self.key.mac_key())
-            // Ok to unwrap, HMAC can take keys of any size
-            .unwrap()
-            .chain_update(header.nonce)
-            .chain_update(chunk_number.to_be_bytes())
-            .chain_update(data)
-            .finalize()
-            .into_bytes()
-            .to_vec()
-    }
-
     fn encrypt_chunk_with_nonce(
         &self,
         nonce: &[u8; NONCE_LEN],
         chunk: &[u8],
         header: &Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, StreamCipherError> {
-        let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
+    ) -> Result<Vec<u8>, aes_gcm::Error> {
+        let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + TAG_LEN);
+
+        let mut associated_data = chunk_number.to_be_bytes().to_vec();
+        associated_data.extend(header.nonce);
+        let (ciphertext, tag) =
+            self.aes_gcm_encrypt(chunk, &header.content_key(), nonce, &associated_data)?;
+
         buffer.extend(nonce);
-        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
-        buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
+        buffer.extend(ciphertext);
+        buffer.extend(tag);
 
         debug_assert!(buffer.len() <= MAX_ENCRYPTED_CHUNK_LEN);
 
@@ -154,37 +170,36 @@ impl<'k> FileCryptor for Cryptor<'k> {
     const MAX_CHUNK_LEN: usize = MAX_CHUNK_LEN;
     const MAX_ENCRYPTED_CHUNK_LEN: usize = MAX_ENCRYPTED_CHUNK_LEN;
 
-    fn encrypt_header(&self, header: &Header) -> Result<Vec<u8>, Error> {
+    fn encrypt_header(&self, header: &Self::Header) -> Result<Vec<u8>, Self::Error> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
+        let (ciphertext, tag) =
+            self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), &header.nonce, &[])?;
+
         buffer.extend(header.nonce);
-        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce)?);
-        buffer.extend(util::hmac(&buffer, self.key));
+        buffer.extend(ciphertext);
+        buffer.extend(tag);
+
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
+
         Ok(buffer)
     }
 
-    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<Header, Error> {
+    fn decrypt_header(
+        &self,
+        encrypted_header: impl AsRef<[u8]>,
+    ) -> Result<Self::Header, Self::Error> {
         let encrypted_header = encrypted_header.as_ref();
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
             return Err(Error::InvalidHeaderLen(encrypted_header.len()));
         }
 
-        // First, verify the HMAC
-        let (nonce_and_payload, expected_mac) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
-        let actual_mac = util::hmac(nonce_and_payload, self.key);
-        if actual_mac != expected_mac {
-            return Err(Error::MacVerificationFailed {
-                expected: expected_mac.to_vec(),
-                actual: actual_mac,
-            });
-        }
-
-        // Next, decrypt the payload
+        let (nonce_and_payload, tag) = encrypted_header.split_at(NONCE_LEN + PAYLOAD_LEN);
         let (nonce, payload) = nonce_and_payload.split_at(NONCE_LEN);
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
+        let tag: [u8; TAG_LEN] = tag.try_into().unwrap();
         let payload: [u8; PAYLOAD_LEN] = self
-            .aes_ctr(payload, self.key.enc_key(), &nonce)?
+            .aes_gcm_decrypt(payload, self.key.enc_key(), &nonce, &[], &tag)?
             .try_into()
             .unwrap();
 
@@ -194,9 +209,9 @@ impl<'k> FileCryptor for Cryptor<'k> {
     fn encrypt_chunk(
         &self,
         chunk: impl AsRef<[u8]>,
-        header: &Header,
+        header: &Self::Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<Vec<u8>, Self::Error> {
         let chunk = chunk.as_ref();
         if chunk.is_empty() || chunk.len() > MAX_CHUNK_LEN {
             return Err(Error::InvalidChunkLen(chunk.len()));
@@ -210,36 +225,29 @@ impl<'k> FileCryptor for Cryptor<'k> {
     fn decrypt_chunk(
         &self,
         encrypted_chunk: impl AsRef<[u8]>,
-        header: &Header,
+        header: &Self::Header,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<Vec<u8>, Self::Error> {
         let encrypted_chunk = encrypted_chunk.as_ref();
-        if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
+        if encrypted_chunk.len() <= NONCE_LEN + TAG_LEN
             || encrypted_chunk.len() > MAX_ENCRYPTED_CHUNK_LEN
         {
             return Err(Error::InvalidChunkLen(encrypted_chunk.len()));
         }
 
-        // First, verify the HMAC
-        let (nonce_and_chunk, expected_mac) =
-            encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
-        let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
-        if actual_mac != expected_mac {
-            return Err(Error::MacVerificationFailed {
-                expected: expected_mac.to_vec(),
-                actual: actual_mac,
-            });
-        }
-
-        // Next, decrypt the chunk
+        let (nonce_and_chunk, tag) = encrypted_chunk.split_at(encrypted_chunk.len() - TAG_LEN);
         let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
+        let tag: [u8; TAG_LEN] = tag.try_into().unwrap();
 
-        Ok(self.aes_ctr(chunk, &header.content_key(), &nonce)?)
+        let mut associated_data = chunk_number.to_be_bytes().to_vec();
+        associated_data.extend(header.nonce);
+
+        Ok(self.aes_gcm_decrypt(chunk, &header.content_key(), &nonce, &associated_data, &tag)?)
     }
 
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, Error> {
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<std::path::PathBuf, Self::Error> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_ref().as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         let base32 = Base32Upper::encode_string(&hash);
@@ -296,7 +304,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             Base64::encode_string(&ciphertext),
-            "AAAAAAAAAAAAAAAAAAAAAPEq/PjcykUIlDRazM36igCN1QKikATEKglKUEDWiEkMGujfnzOMHOLK+h1N4PnB891N+uiKvZVyNWgezJc2G4ejVvLko6B1/IMyrQ=="
+            "AAAAAAAAAAAAAAAABuWa0yODDKHFtRizEcmdCC+Lj4yIt17WEiaw4kNyO3sLHx+6HNwklpgcipEJ8lRmonOdo932Mmf5bTw="
         );
         assert_eq!(
             cryptor.decrypt_chunk(&ciphertext, &header, 2).unwrap(),

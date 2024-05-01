@@ -2,8 +2,6 @@ use std::io;
 
 use scrypt::password_hash;
 
-use crate::CipherCombo;
-
 #[derive(Debug, thiserror::Error)]
 pub enum KeyFromFileError {
     #[error("failed to read key file")]
@@ -43,6 +41,22 @@ pub enum SivCtrMacCryptorError {
 }
 
 #[derive(Debug, thiserror::Error)]
+pub enum SivGcmCryptorError {
+    #[error("invalid header length: {0}")]
+    InvalidHeaderLen(usize),
+    #[error("invalid chunk length: {0}")]
+    InvalidChunkLen(usize),
+    #[error("failed to generate random bytes")]
+    RandError(#[from] rand_core::Error),
+    #[error("failed to encrypt/decrypt using AEAD cipher")]
+    AeadError(#[from] aes_gcm::Error),
+    #[error("failed to decode base64 string")]
+    Base64DecodeError(#[from] base64ct::Error),
+    #[error("failed to convert to UTF-8 string")]
+    InvalidUTF8(#[from] std::string::FromUtf8Error),
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum VaultUnlockError {
     #[error("failed to read vault config file")]
     ReadConfigFile(#[from] io::Error),
@@ -60,6 +74,4 @@ pub enum VaultUnlockError {
     UnsupportedKeyUri(String),
     #[error("unsupported vault format: {0}")]
     UnsupportedVaultFormat(u32),
-    #[error("unsupported cipher combo: {0:?}")]
-    UnsupportedCipherCombo(CipherCombo),
 }

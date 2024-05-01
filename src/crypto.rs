@@ -1,6 +1,7 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 pub mod siv_ctrmac;
+pub mod siv_gcm;
 
 pub trait FileHeader {
     const ENCRYPTED_HEADER_LEN: usize;

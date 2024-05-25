@@ -26,7 +26,7 @@ impl<'v> EncryptedFileSystem<'v> {
     fn decrypt_file_to_string(&self, ciphertext_path: impl AsRef<Path>) -> io::Result<String> {
         let file = File::open(ciphertext_path)?;
         let mut cleartext = String::new();
-        BufReader::new(DecryptStream::new(self.vault.cryptor(), file))
+        DecryptStream::new(self.vault.cryptor(), BufReader::new(file))
             .read_to_string(&mut cleartext)?;
         Ok(cleartext)
     }

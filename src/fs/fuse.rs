@@ -49,6 +49,7 @@ impl From<FileKind> for FileType {
     }
 }
 
+#[derive(Debug)]
 struct Attributes {
     inode: Inode,
     kind: FileKind,
@@ -80,6 +81,7 @@ impl From<&Attributes> for FileAttr {
     }
 }
 
+#[derive(Debug)]
 pub struct FuseFileSystem<'v> {
     inner: EncryptedFileSystem<'v>,
     attr_map: BTreeMap<Inode, Attributes>,
@@ -132,9 +134,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
         // Cache metadata and contents for root dir, inode 1
-        let meta = self.inner.root_dir().metadata().or(Err(libc::EIO))?;
+        let meta = self.inner.root_dir().metadata().unwrap();
         let inode = self.cache_attrs(FileKind::Directory, meta);
-        let entries = self.inner.get_virtual_dir_entries("").or(Err(libc::EIO))?;
+        let entries = self.inner.get_virtual_dir_entries("").unwrap();
         self.cache_entries(inode, entries);
 
         Ok(())

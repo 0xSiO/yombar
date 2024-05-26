@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    fs::{File, Metadata},
+    fs::{self, File, Metadata},
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
 };
@@ -9,7 +9,7 @@ use crate::{crypto::FileCryptor, io::DecryptStream, Vault};
 
 pub mod fuse;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum FileKind {
     File,
     Directory,
@@ -22,6 +22,7 @@ struct DirEntry {
     metadata: Metadata,
 }
 
+#[derive(Debug)]
 pub struct EncryptedFileSystem<'v> {
     vault: &'v Vault,
 }
@@ -67,13 +68,16 @@ impl<'v> EncryptedFileSystem<'v> {
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
     ) -> io::Result<PathBuf> {
-        Ok(self.vault.path().join("d").join(
+        let mut path = self.vault.path().join("d").join(
             self.vault
                 .cryptor()
                 .hash_dir_id(&parent_dir_id)
                 .unwrap()
                 .join(self.get_ciphertext_name(cleartext_path, parent_dir_id)?),
-        ))
+        );
+        path.set_extension("c9r");
+
+        Ok(path)
     }
 
     // TODO: Handle case when name is too long to be stored in the file stem
@@ -98,7 +102,7 @@ impl<'v> EncryptedFileSystem<'v> {
             None => return Ok(String::new()),
         };
 
-        self.decrypt_file_to_string(
+        fs::read_to_string(
             self.get_ciphertext_path(cleartext_dir, parent_dir_id)?
                 .join("dir.c9r"),
         )
@@ -116,8 +120,12 @@ impl<'v> EncryptedFileSystem<'v> {
         }
 
         if ciphertext_path.is_dir() && ciphertext_path.join("dir.c9r").is_file() {
-            let dir_id = self.decrypt_file_to_string(ciphertext_path.join("dir.c9r"))?;
-            let hashed_dir_path = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+            let dir_id = fs::read_to_string(ciphertext_path.join("dir.c9r"))?;
+            let hashed_dir_path = self
+                .vault
+                .path()
+                .join("d")
+                .join(self.vault.cryptor().hash_dir_id(dir_id).unwrap());
             return Ok((FileKind::Directory, hashed_dir_path.metadata()?));
         }
 
@@ -139,7 +147,12 @@ impl<'v> EncryptedFileSystem<'v> {
         cleartext_dir: impl AsRef<Path>,
     ) -> io::Result<Vec<DirEntry>> {
         let dir_id = self.get_dir_id(&cleartext_dir)?;
-        let hashed_dir_path = self.vault.cryptor().hash_dir_id(&dir_id).unwrap();
+        let hashed_dir_path = self
+            .vault
+            .path()
+            .join("d")
+            .join(self.vault.cryptor().hash_dir_id(&dir_id).unwrap());
+
         let ciphertext_entries = hashed_dir_path
             .read_dir()?
             .collect::<io::Result<Vec<_>>>()?;

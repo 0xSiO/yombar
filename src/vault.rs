@@ -32,6 +32,7 @@ pub struct VaultConfig {
     pub cipher_combo: CipherCombo,
 }
 
+#[derive(Debug)]
 pub struct Vault {
     path: PathBuf,
     config: TokenData<VaultConfig>,

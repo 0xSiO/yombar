@@ -1,10 +1,28 @@
+#![allow(dead_code)]
+
 use std::{
-    fs::File,
+    ffi::OsString,
+    fs::{File, Metadata},
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
 };
 
 use crate::{crypto::FileCryptor, io::DecryptStream, Vault};
+
+pub mod fuse;
+
+#[derive(Copy, Clone)]
+enum FileKind {
+    File,
+    Directory,
+    Symlink,
+}
+
+struct DirEntry {
+    file_name: OsString,
+    file_kind: FileKind,
+    metadata: Metadata,
+}
 
 pub struct EncryptedFileSystem<'v> {
     vault: &'v Vault,
@@ -58,6 +76,26 @@ impl<'v> EncryptedFileSystem<'v> {
             .unwrap())
     }
 
+    // TODO: Handle case when name is too long to be stored in the file stem
+    fn get_cleartext_name(
+        &self,
+        ciphertext_path: impl AsRef<Path>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> io::Result<String> {
+        self.vault
+            .cryptor()
+            .decrypt_name(
+                ciphertext_path
+                    .as_ref()
+                    .file_stem()
+                    .map(|s| s.to_string_lossy())
+                    // TODO: This may not be the best idea
+                    .unwrap_or_default(),
+                &parent_dir_id,
+            )
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
     // TODO: Cache results from this function
     fn get_dir_id(&self, cleartext_path: impl AsRef<Path>) -> io::Result<String> {
         let parent_dir_id = match cleartext_path.as_ref().parent() {
@@ -94,5 +132,43 @@ impl<'v> EncryptedFileSystem<'v> {
                         .unwrap(),
                 ),
         ))
+    }
+
+    fn read_dir(
+        &self,
+        cleartext_dir_path: impl AsRef<Path>,
+    ) -> io::Result<impl Iterator<Item = io::Result<DirEntry>> + '_> {
+        let cleartext_dir_path = cleartext_dir_path.as_ref().to_path_buf();
+        let dir_id = self.get_dir_id(&cleartext_dir_path)?;
+        let ciphertext_dir_path = self.get_ciphertext_path(&cleartext_dir_path)?;
+
+        Ok(ciphertext_dir_path
+            .read_dir()?
+            .filter(|entry| {
+                entry
+                    .as_ref()
+                    .map(|e| e.file_name() != "dirid.c9r")
+                    .unwrap_or(false)
+            })
+            .map(move |entry| match entry {
+                Ok(entry) => {
+                    let cleartext_name = self.get_cleartext_name(entry.path(), &dir_id)?;
+
+                    let file_kind = if self.is_dir(entry.path()) {
+                        FileKind::Directory
+                    } else if self.is_symlink(entry.path()) {
+                        FileKind::Symlink
+                    } else {
+                        FileKind::File
+                    };
+
+                    Ok(DirEntry {
+                        file_name: cleartext_name.into(),
+                        file_kind,
+                        metadata: entry.metadata()?,
+                    })
+                }
+                Err(err) => Err(err),
+            }))
     }
 }

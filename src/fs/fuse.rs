@@ -1,16 +1,15 @@
 use std::{
     collections::BTreeMap,
     ffi::OsString,
-    io,
+    fs::Metadata,
     os::unix::fs::{MetadataExt, PermissionsExt},
-    path::Path,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, UNIX_EPOCH},
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
-use crate::fs::{EncryptedFileSystem, FileKind};
+use crate::fs::{DirEntry, EncryptedFileSystem, FileKind};
 
 // Things we need:
 // - attr_map: Mapping of inode -> attributes
@@ -32,13 +31,13 @@ use crate::fs::{EncryptedFileSystem, FileKind};
 // ^ This all should be handled under the hood by EncryptedFileSystem
 //
 // Capabilities we need from EncryptedFileSystem:
-// - map cleartext path -> virtual file type
-// - map cleartext path -> virtual file/dir/symlink metadata
+// - map cleartext path -> virtual file/dir/symlink info (kind, metadata)
 // - map cleartext dir path -> list of virtual dir entries (filename, file kind, metadata)
 
 const TTL: Duration = Duration::from_secs(1);
 
 type Inode = u64;
+type DirEntries = BTreeMap<OsString, (Inode, FileKind)>;
 
 impl From<FileKind> for FileType {
     fn from(kind: FileKind) -> Self {
@@ -52,7 +51,7 @@ impl From<FileKind> for FileType {
 
 struct Attributes {
     inode: Inode,
-    kind: FileType,
+    kind: FileKind,
     meta: std::fs::Metadata,
 }
 
@@ -69,7 +68,7 @@ impl From<&Attributes> for FileAttr {
                 .checked_add(Duration::from_secs(value.meta.ctime() as u64))
                 .unwrap_or(UNIX_EPOCH),
             crtime: value.meta.created().unwrap_or(UNIX_EPOCH),
-            kind: value.kind,
+            kind: value.kind.into(),
             perm: value.meta.permissions().mode() as u16,
             nlink: value.meta.nlink() as u32,
             uid: value.meta.uid(),
@@ -81,11 +80,10 @@ impl From<&Attributes> for FileAttr {
     }
 }
 
-type DirEntries = BTreeMap<OsString, (Inode, FileKind)>;
-
 pub struct FuseFileSystem<'v> {
     inner: EncryptedFileSystem<'v>,
     attr_map: BTreeMap<Inode, Attributes>,
+    entry_map: BTreeMap<Inode, DirEntries>,
     next_inode: AtomicU64,
 }
 
@@ -94,25 +92,36 @@ impl<'v> FuseFileSystem<'v> {
         Self {
             inner: fs,
             attr_map: Default::default(),
+            entry_map: Default::default(),
             next_inode: AtomicU64::new(FUSE_ROOT_ID),
         }
     }
 
-    fn cache_attrs(&mut self, cleartext_path: impl AsRef<Path>) -> io::Result<()> {
-        let ciphertext_path = self.inner.get_ciphertext_path(&cleartext_path)?;
-        let metadata = ciphertext_path.metadata()?;
-        let next_ino = self.next_inode.fetch_add(1, Ordering::SeqCst);
+    fn cache_attrs(&mut self, kind: FileKind, meta: Metadata) -> Inode {
+        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
 
-        self.attr_map.insert(
-            next_ino,
-            Attributes {
-                inode: next_ino,
-                kind: FileKind::Directory.into(),
-                meta: metadata,
-            },
-        );
+        self.attr_map
+            .insert(inode, Attributes { inode, kind, meta });
 
-        Ok(())
+        inode
+    }
+
+    fn cache_entries(&mut self, inode: Inode, entries: Vec<DirEntry>) {
+        let map = self.entry_map.entry(inode).or_default();
+        for entry in entries {
+            let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+
+            self.attr_map.insert(
+                inode,
+                Attributes {
+                    inode,
+                    kind: entry.file_kind,
+                    meta: entry.metadata,
+                },
+            );
+
+            map.insert(entry.file_name, (inode, entry.file_kind));
+        }
     }
 }
 
@@ -122,8 +131,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _req: &fuser::Request<'_>,
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
-        // Cache metadata for root dir, inode 1
-        self.cache_attrs("").or(Err(libc::EIO))
+        // Cache metadata and contents for root dir, inode 1
+        let meta = self.inner.root_dir().metadata().or(Err(libc::EIO))?;
+        let inode = self.cache_attrs(FileKind::Directory, meta);
+        let entries = self.inner.get_virtual_dir_entries("").or(Err(libc::EIO))?;
+        self.cache_entries(inode, entries);
+
+        Ok(())
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {

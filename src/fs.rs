@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     ffi::OsString,
     fs::{File, Metadata},

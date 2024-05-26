@@ -24,15 +24,18 @@ use crate::fs::{DirEntry, EncryptedFileSystem, FileKind};
 // entry_map = { 1 -> { "." -> (1, Directory), "a.txt" -> (2, File) } }
 //
 // Important notes on metadata:
-// - file metadata = same as the appropriate *.c9r files
-// - directory metadata = same as second half of hashed dir ID, NOT the dir's *.c9r folder
-// - symlink metadata = same as the appropriate symlink.c9r file
+// - file metadata = use appropriate *.c9r file
+// - directory metadata = use second half of hashed dir ID, NOT the dir's *.c9r folder
+// - symlink metadata = use appropriate symlink.c9r file
 //
 // ^ This all should be handled under the hood by EncryptedFileSystem
 //
 // Capabilities we need from EncryptedFileSystem:
 // - map cleartext path -> virtual file/dir/symlink info (kind, metadata)
 // - map cleartext dir path -> list of virtual dir entries (filename, file kind, metadata)
+//
+// We also need to be able to read the contents of a file given its inode, so we may need a mapping
+// of inodes to virtual paths
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -60,14 +63,14 @@ impl From<&Attributes> for FileAttr {
     fn from(value: &Attributes) -> Self {
         Self {
             ino: value.inode,
+            // TODO: This is wrong, calculate decrypted size somehow
             size: value.meta.size(),
+            // TOD: Cryptomator sets this to 0, should we do the same?
             blocks: value.meta.blocks(),
             atime: value.meta.accessed().unwrap_or(UNIX_EPOCH),
             mtime: value.meta.modified().unwrap_or(UNIX_EPOCH),
-            // TODO: handle times before epoch?
-            ctime: UNIX_EPOCH
-                .checked_add(Duration::from_secs(value.meta.ctime() as u64))
-                .unwrap_or(UNIX_EPOCH),
+            // TODO: Is created() the right one to use here? Looks like Cryptomator does this also
+            ctime: value.meta.created().unwrap_or(UNIX_EPOCH),
             crtime: value.meta.created().unwrap_or(UNIX_EPOCH),
             kind: value.kind.into(),
             perm: value.meta.permissions().mode() as u16,
@@ -142,9 +145,49 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         Ok(())
     }
 
+    fn lookup(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        reply: fuser::ReplyEntry,
+    ) {
+        if let Some(entries) = self.entry_map.get(&parent) {
+            if let Some(&(inode, _)) = entries.get(name) {
+                // If the inode exists in the entry map, we should have attrs for it
+                let attrs = self.attr_map.get(&inode).unwrap();
+                return reply.entry(&TTL, &FileAttr::from(attrs), 0);
+            }
+        }
+        reply.error(libc::ENOENT);
+    }
+
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         match self.attr_map.get(&ino) {
             Some(attrs) => reply.attr(&TTL, &FileAttr::from(attrs)),
+            None => reply.error(libc::ENOENT),
+        }
+    }
+
+    fn readdir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        mut reply: fuser::ReplyDirectory,
+    ) {
+        match self.entry_map.get(&ino) {
+            Some(entries) => {
+                for (i, entry) in entries.iter().enumerate().skip(offset as usize) {
+                    let (name, &(inode, kind)) = entry;
+                    // i + 1 means the index of the next entry
+                    if reply.add(inode, (i + 1) as i64, kind.into(), name) {
+                        break;
+                    }
+                }
+                reply.ok();
+            }
             None => reply.error(libc::ENOENT),
         }
     }

@@ -96,7 +96,6 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
     }
 }
 
-#[allow(dead_code)]
 pub struct EncryptStream<C: FileCryptor, W: Write> {
     cryptor: C,
     inner: W,

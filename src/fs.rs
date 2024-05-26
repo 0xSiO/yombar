@@ -27,12 +27,12 @@ pub struct EncryptedFileSystem<'v> {
     vault: &'v Vault,
 }
 
-#[allow(dead_code)]
 impl<'v> EncryptedFileSystem<'v> {
     pub fn new(vault: &'v Vault) -> Self {
         Self { vault }
     }
 
+    #[allow(dead_code)]
     fn decrypt_file_to_string(&self, ciphertext_path: impl AsRef<Path>) -> io::Result<String> {
         let file = File::open(ciphertext_path)?;
         let mut cleartext = String::new();

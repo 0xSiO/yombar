@@ -27,7 +27,7 @@ use crate::fs::{EncryptedFileSystem, FileKind};
 // Important notes on metadata:
 // - file metadata = same as the appropriate *.c9r files
 // - directory metadata = same as second half of hashed dir ID, NOT the dir's *.c9r folder
-// - symlink metadata = same as the pointed-to entity, NOT the symlink's *.c9r folder
+// - symlink metadata = same as the appropriate symlink.c9r file
 //
 // ^ This all should be handled under the hood by EncryptedFileSystem
 //

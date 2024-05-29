@@ -3,7 +3,7 @@ use std::{
     io::{self, Read, Write},
 };
 
-use crate::crypto::{FileCryptor, FileHeader};
+use crate::crypto::{Cryptor, FileCryptor, FileHeader};
 
 /// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole
 /// buffer could be filled and the number of bytes read.
@@ -23,8 +23,8 @@ fn try_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> io::Res
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub struct DecryptStream<C: FileCryptor, R: Read> {
-    cryptor: C,
+pub struct DecryptStream<'k, R: Read> {
+    cryptor: Cryptor<'k>,
     inner: R,
     header: Option<FileHeader>,
     chunk_number: usize,
@@ -32,8 +32,8 @@ pub struct DecryptStream<C: FileCryptor, R: Read> {
     buffer: VecDeque<u8>,
 }
 
-impl<C: FileCryptor, R: Read> DecryptStream<C, R> {
-    pub fn new(cryptor: C, inner: R) -> Self {
+impl<'k, R: Read> DecryptStream<'k, R> {
+    pub fn new(cryptor: Cryptor<'k>, inner: R) -> Self {
         let buffer = VecDeque::with_capacity(cryptor.max_chunk_len());
 
         Self {
@@ -47,7 +47,7 @@ impl<C: FileCryptor, R: Read> DecryptStream<C, R> {
     }
 }
 
-impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
+impl<'k, R: Read> Read for DecryptStream<'k, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // The file header must be read exactly once
         if self.header.is_none() {
@@ -98,8 +98,8 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
     }
 }
 
-pub struct EncryptStream<C: FileCryptor, W: Write> {
-    cryptor: C,
+pub struct EncryptStream<'k, W: Write> {
+    cryptor: Cryptor<'k>,
     inner: W,
     header: FileHeader,
     header_written: bool,
@@ -108,8 +108,8 @@ pub struct EncryptStream<C: FileCryptor, W: Write> {
     buffer: VecDeque<u8>,
 }
 
-impl<C: FileCryptor, W: Write> EncryptStream<C, W> {
-    pub fn new(cryptor: C, header: FileHeader, inner: W) -> Self {
+impl<'k, W: Write> EncryptStream<'k, W> {
+    pub fn new(cryptor: Cryptor<'k>, header: FileHeader, inner: W) -> Self {
         let buffer = VecDeque::with_capacity(cryptor.max_chunk_len());
 
         Self {
@@ -125,7 +125,7 @@ impl<C: FileCryptor, W: Write> EncryptStream<C, W> {
     }
 }
 
-impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
+impl<'k, W: Write> Write for EncryptStream<'k, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // The file header must be written exactly once
         if !self.header_written {

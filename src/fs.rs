@@ -1,11 +1,15 @@
 use std::{
     collections::BTreeMap,
     fs::{self, File, Metadata},
-    io::{self, BufReader, Read},
+    io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, io::DecryptStream, Vault};
+use crate::{
+    crypto::FileCryptor,
+    io::{DecryptStream, EncryptStream},
+    Vault,
+};
 
 pub mod fuse;
 
@@ -157,6 +161,38 @@ impl<'v> EncryptedFileSystem<'v> {
         }
 
         Ok(cleartext_entries)
+    }
+
+    #[allow(dead_code)]
+    fn get_virtual_reader(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> io::Result<DecryptStream<'_, impl Read>> {
+        let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
+        let file = File::open(ciphertext_path)?;
+
+        Ok(DecryptStream::new(
+            self.vault.cryptor(),
+            BufReader::new(file),
+        ))
+    }
+
+    #[allow(dead_code)]
+    fn get_virtual_writer(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> io::Result<EncryptStream<'_, impl Write>> {
+        let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
+        let file = File::open(ciphertext_path)?;
+
+        Ok(EncryptStream::new(
+            self.vault.cryptor(),
+            // TODO: Is it okay to re-encrypt everything with a new content key like this?
+            self.vault.cryptor().new_header()?,
+            BufWriter::new(file),
+        ))
     }
 
     // TODO: Something like

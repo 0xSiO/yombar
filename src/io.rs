@@ -115,7 +115,6 @@ impl<'k, W: Write> EncryptStream<'k, W> {
         Self {
             cryptor,
             inner,
-            // TODO: Use Header::new? i.e. do we re-encrypt everything with a new content key?
             header,
             header_written: false,
             chunk_number: 0,

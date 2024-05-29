@@ -145,6 +145,10 @@ impl<'k> FileCryptor for Cryptor<'k> {
         MAX_ENCRYPTED_CHUNK_LEN
     }
 
+    fn new_header(&self) -> Result<FileHeader, rand_core::Error> {
+        FileHeader::new(NONCE_LEN, PAYLOAD_LEN)
+    }
+
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         let (ciphertext, tag) =

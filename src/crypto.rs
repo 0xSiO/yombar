@@ -46,6 +46,8 @@ pub trait FileCryptor {
 
     fn max_encrypted_chunk_len(&self) -> usize;
 
+    fn new_header(&self) -> Result<FileHeader, rand_core::Error>;
+
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError>;
 
     fn decrypt_header(
@@ -107,6 +109,13 @@ impl<'k> FileCryptor for Cryptor<'k> {
         match self {
             Cryptor::SivCtrMac(c) => c.max_encrypted_chunk_len(),
             Cryptor::SivGcm(c) => c.max_encrypted_chunk_len(),
+        }
+    }
+
+    fn new_header(&self) -> Result<FileHeader, rand_core::Error> {
+        match self {
+            Cryptor::SivCtrMac(c) => c.new_header(),
+            Cryptor::SivGcm(c) => c.new_header(),
         }
     }
 

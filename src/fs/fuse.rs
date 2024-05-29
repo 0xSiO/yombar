@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    io::Read,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -151,6 +152,51 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            let parent_dir_id = match path.parent() {
+                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
+                None => return reply.error(libc::ENOENT),
+            };
+
+            if let Ok(target) = self.fs.get_link_target(path, parent_dir_id) {
+                return reply.data(target.as_bytes());
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
+    fn read(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        _fh: u64,
+        offset: i64,
+        size: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        reply: fuser::ReplyData,
+    ) {
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            let parent_dir_id = match path.parent() {
+                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
+                None => return reply.error(libc::ENOENT),
+            };
+
+            if let Ok(mut reader) = self.fs.get_virtual_reader(path, parent_dir_id) {
+                let mut buffer = Vec::with_capacity(size as usize);
+                // TODO: Use Seek to skip to offset, don't read the whole thing, use file handles
+                reader.read_to_end(&mut buffer).unwrap();
+                buffer.truncate(size as usize);
+                // TODO: offset may be negative?
+                return reply.data(&buffer[offset as usize..]);
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn readdir(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -177,21 +223,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 }
 
                 return reply.ok();
-            }
-        }
-
-        reply.error(libc::ENOENT);
-    }
-
-    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
-            let parent_dir_id = match path.parent() {
-                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
-                None => return reply.error(libc::ENOENT),
-            };
-
-            if let Ok(target) = self.fs.get_link_target(path, parent_dir_id) {
-                return reply.data(target.as_bytes());
             }
         }
 

@@ -194,16 +194,4 @@ impl<'v> EncryptedFileSystem<'v> {
             BufWriter::new(file),
         ))
     }
-
-    // TODO: Something like
-    // fn get_virtual_reader(&self) -> io::Result<DecryptStream<impl FileCryptor, impl Read>> {}
-    // fn get_virtual_writer(&self) -> io::Result<EncryptStream<impl FileCryptor, impl Read>> {}
-    #[allow(dead_code)]
-    fn decrypt_file_to_string(&self, ciphertext_path: impl AsRef<Path>) -> io::Result<String> {
-        let file = File::open(ciphertext_path)?;
-        let mut cleartext = String::new();
-        DecryptStream::new(self.vault.cryptor(), BufReader::new(file))
-            .read_to_string(&mut cleartext)?;
-        Ok(cleartext)
-    }
 }

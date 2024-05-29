@@ -133,15 +133,15 @@ impl<'k> Cryptor<'k> {
 }
 
 impl<'k> FileCryptor for Cryptor<'k> {
-    fn encrypted_header_len() -> usize {
+    fn encrypted_header_len(&self) -> usize {
         ENCRYPTED_HEADER_LEN
     }
 
-    fn max_chunk_len() -> usize {
+    fn max_chunk_len(&self) -> usize {
         MAX_CHUNK_LEN
     }
 
-    fn max_encrypted_chunk_len() -> usize {
+    fn max_encrypted_chunk_len(&self) -> usize {
         MAX_ENCRYPTED_CHUNK_LEN
     }
 

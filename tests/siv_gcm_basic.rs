@@ -7,7 +7,7 @@ use std::{
 
 use base64ct::{Base64, Encoding};
 use cryptomator::{
-    crypto::{siv_gcm::Cryptor, FileCryptor},
+    crypto::FileCryptor,
     io::{DecryptStream, EncryptStream},
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
@@ -64,7 +64,7 @@ pub fn siv_gcm_basic() {
     assert_eq!(decoded_config.claims, vault.config().claims);
 
     // Check file name encryption/decryption
-    let cryptor = Cryptor::new(key);
+    let cryptor = vault.cryptor();
 
     assert_eq!(
         cryptor

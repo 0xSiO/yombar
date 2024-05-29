@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    crypto::{siv_ctrmac, FileCryptor},
+    crypto::{siv_ctrmac, siv_gcm, Cryptor, FileCryptor},
     error::*,
     util, MasterKey, WrappedKey,
 };
@@ -101,12 +101,12 @@ impl Vault {
         &self.master_key
     }
 
-    pub fn cryptor(&self) -> impl FileCryptor + '_ {
+    pub fn cryptor(&self) -> impl FileCryptor + Copy + '_ {
         match self.config().claims.cipher_combo {
-            CipherCombo::SivCtrMac => siv_ctrmac::Cryptor::new(self.master_key()),
-            // TODO: Uncomment for fun with types
-            // CipherCombo::SivGcm => siv_gcm::Cryptor::new(self.master_key()),
-            _ => todo!(),
+            CipherCombo::SivCtrMac => {
+                Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(self.master_key()))
+            }
+            CipherCombo::SivGcm => Cryptor::SivGcm(siv_gcm::Cryptor::new(self.master_key())),
         }
     }
 }

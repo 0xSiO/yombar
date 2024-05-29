@@ -1,5 +1,5 @@
 use std::{
-    ffi::OsString,
+    collections::BTreeMap,
     fs::{self, File, Metadata},
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
@@ -16,11 +16,7 @@ enum FileKind {
     Symlink,
 }
 
-struct DirEntry {
-    file_name: OsString,
-    file_kind: FileKind,
-    metadata: Metadata,
-}
+type DirEntries = BTreeMap<PathBuf, (FileKind, Metadata)>;
 
 #[derive(Debug)]
 pub struct EncryptedFileSystem<'v> {
@@ -95,7 +91,6 @@ impl<'v> EncryptedFileSystem<'v> {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
-    // TODO: Cache results from this function?
     fn get_dir_id(&self, cleartext_dir: impl AsRef<Path>) -> io::Result<String> {
         let parent_dir_id = match cleartext_dir.as_ref().parent() {
             Some(parent) => self.get_dir_id(parent)?,
@@ -142,10 +137,7 @@ impl<'v> EncryptedFileSystem<'v> {
         ))
     }
 
-    fn get_virtual_dir_entries(
-        &self,
-        cleartext_dir: impl AsRef<Path>,
-    ) -> io::Result<Vec<DirEntry>> {
+    fn get_virtual_dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> io::Result<DirEntries> {
         let dir_id = self.get_dir_id(&cleartext_dir)?;
         let hashed_dir_path = self
             .vault
@@ -157,7 +149,7 @@ impl<'v> EncryptedFileSystem<'v> {
             .read_dir()?
             .collect::<io::Result<Vec<_>>>()?;
 
-        let mut cleartext_entries: Vec<DirEntry> = Vec::with_capacity(ciphertext_entries.len());
+        let mut cleartext_entries: DirEntries = Default::default();
         for entry in ciphertext_entries {
             if entry.file_name() == "dirid.c9r" {
                 continue;
@@ -167,11 +159,10 @@ impl<'v> EncryptedFileSystem<'v> {
             let (file_kind, metadata) =
                 self.get_virtual_file_info(cleartext_dir.as_ref().join(&cleartext_name), &dir_id)?;
 
-            cleartext_entries.push(DirEntry {
-                file_name: cleartext_name.into(),
-                file_kind,
-                metadata,
-            })
+            cleartext_entries.insert(
+                cleartext_dir.as_ref().join(cleartext_name),
+                (file_kind, metadata),
+            );
         }
 
         Ok(cleartext_entries)

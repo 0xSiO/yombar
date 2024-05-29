@@ -1,46 +1,18 @@
 use std::{
     collections::BTreeMap,
-    ffi::OsString,
-    fs::Metadata,
     os::unix::fs::{MetadataExt, PermissionsExt},
+    path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, UNIX_EPOCH},
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
-use crate::fs::{DirEntry, EncryptedFileSystem, FileKind};
-
-// Things we need:
-// - attr_map: Mapping of inode -> attributes
-// - entry_map: Mapping of inode -> directory entries (mapping of file names -> (inode, FileType))
-//
-// Initial values:
-// attr_map = { 1 -> (root dir attrs) }
-// entry_map = { 1 -> { "." -> (1, Directory) } }
-//
-// We identify a text file inside the root dir. This becomes:
-// attr_map = { 1 -> (root dir attrs), 2 -> (text file attrs) }
-// entry_map = { 1 -> { "." -> (1, Directory), "a.txt" -> (2, File) } }
-//
-// Important notes on metadata:
-// - file metadata = use appropriate *.c9r file
-// - directory metadata = use second half of hashed dir ID, NOT the dir's *.c9r folder
-// - symlink metadata = use appropriate symlink.c9r file
-//
-// ^ This all should be handled under the hood by EncryptedFileSystem
-//
-// Capabilities we need from EncryptedFileSystem:
-// - map cleartext path -> virtual file/dir/symlink info (kind, metadata)
-// - map cleartext dir path -> list of virtual dir entries (filename, file kind, metadata)
-//
-// We also need to be able to read the contents of a file given its inode, so we may need a mapping
-// of inodes to virtual paths
+use crate::fs::{EncryptedFileSystem, FileKind};
 
 const TTL: Duration = Duration::from_secs(1);
 
 type Inode = u64;
-type DirEntries = BTreeMap<OsString, (Inode, FileKind)>;
 
 impl From<FileKind> for FileType {
     fn from(kind: FileKind) -> Self {
@@ -59,8 +31,8 @@ struct Attributes {
     meta: std::fs::Metadata,
 }
 
-impl From<&Attributes> for FileAttr {
-    fn from(value: &Attributes) -> Self {
+impl From<Attributes> for FileAttr {
+    fn from(value: Attributes) -> Self {
         Self {
             ino: value.inode,
             // TODO: This is wrong, calculate decrypted size somehow
@@ -86,46 +58,19 @@ impl From<&Attributes> for FileAttr {
 
 #[derive(Debug)]
 pub struct FuseFileSystem<'v> {
-    inner: EncryptedFileSystem<'v>,
-    attr_map: BTreeMap<Inode, Attributes>,
-    entry_map: BTreeMap<Inode, DirEntries>,
+    fs: EncryptedFileSystem<'v>,
+    inodes_to_paths: BTreeMap<Inode, PathBuf>,
+    paths_to_inodes: BTreeMap<PathBuf, Inode>,
     next_inode: AtomicU64,
 }
 
 impl<'v> FuseFileSystem<'v> {
     pub fn new(fs: EncryptedFileSystem<'v>) -> Self {
         Self {
-            inner: fs,
-            attr_map: Default::default(),
-            entry_map: Default::default(),
+            fs,
+            inodes_to_paths: Default::default(),
+            paths_to_inodes: Default::default(),
             next_inode: AtomicU64::new(FUSE_ROOT_ID),
-        }
-    }
-
-    fn cache_attrs(&mut self, kind: FileKind, meta: Metadata) -> Inode {
-        let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-
-        self.attr_map
-            .insert(inode, Attributes { inode, kind, meta });
-
-        inode
-    }
-
-    fn cache_entries(&mut self, inode: Inode, entries: Vec<DirEntry>) {
-        let map = self.entry_map.entry(inode).or_default();
-        for entry in entries {
-            let inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-
-            self.attr_map.insert(
-                inode,
-                Attributes {
-                    inode,
-                    kind: entry.file_kind,
-                    meta: entry.metadata,
-                },
-            );
-
-            map.insert(entry.file_name, (inode, entry.file_kind));
         }
     }
 }
@@ -136,11 +81,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _req: &fuser::Request<'_>,
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
-        // Cache metadata and contents for root dir, inode 1
-        let meta = self.inner.root_dir().metadata().unwrap();
-        let inode = self.cache_attrs(FileKind::Directory, meta);
-        let entries = self.inner.get_virtual_dir_entries("").unwrap();
-        self.cache_entries(inode, entries);
+        let root_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+        self.inodes_to_paths.insert(root_inode, PathBuf::new());
+        self.paths_to_inodes.insert(PathBuf::new(), root_inode);
 
         Ok(())
     }
@@ -152,21 +95,60 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
-        if let Some(entries) = self.entry_map.get(&parent) {
-            if let Some(&(inode, _)) = entries.get(name) {
-                // If the inode exists in the entry map, we should have attrs for it
-                let attrs = self.attr_map.get(&inode).unwrap();
-                return reply.entry(&TTL, &FileAttr::from(attrs), 0);
+        if let Some(path) = self.inodes_to_paths.get(&parent) {
+            if let Ok(mut entries) = self.fs.get_virtual_dir_entries(path) {
+                let target_path = path.join(name);
+
+                if let Some((kind, meta)) = entries.remove(&target_path) {
+                    let inode = *self
+                        .paths_to_inodes
+                        .entry(target_path.clone())
+                        .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
+                    self.inodes_to_paths.insert(inode, target_path);
+
+                    return reply.entry(&TTL, &FileAttr::from(Attributes { inode, kind, meta }), 0);
+                }
             }
         }
+
         reply.error(libc::ENOENT);
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        match self.attr_map.get(&ino) {
-            Some(attrs) => reply.attr(&TTL, &FileAttr::from(attrs)),
-            None => reply.error(libc::ENOENT),
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            let parent_dir_id = match path.parent() {
+                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
+                None => {
+                    return reply.attr(
+                        &TTL,
+                        &FileAttr::from(Attributes {
+                            inode: FUSE_ROOT_ID,
+                            kind: FileKind::Directory,
+                            meta: self.fs.root_dir().metadata().unwrap(),
+                        }),
+                    )
+                }
+            };
+
+            if let Ok((kind, meta)) = self.fs.get_virtual_file_info(path, parent_dir_id) {
+                return reply.attr(
+                    &TTL,
+                    &FileAttr::from(Attributes {
+                        inode: ino,
+                        kind,
+                        meta,
+                    }),
+                );
+            }
         }
+
+        // Remove any cached data if not found
+        // TODO: Do this in other methods too where needed
+        self.inodes_to_paths
+            .remove(&ino)
+            .map(|path| self.paths_to_inodes.remove(&path));
+
+        reply.error(libc::ENOENT);
     }
 
     fn readdir(
@@ -177,18 +159,27 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        match self.entry_map.get(&ino) {
-            Some(entries) => {
-                for (i, entry) in entries.iter().enumerate().skip(offset as usize) {
-                    let (name, &(inode, kind)) = entry;
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
+                for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
+                    let (path, (kind, _)) = entry;
+                    let name = path.file_name().unwrap().to_os_string();
+                    let inode = *self
+                        .paths_to_inodes
+                        .entry(path.clone())
+                        .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
+                    self.inodes_to_paths.insert(inode, path);
+
                     // i + 1 means the index of the next entry
                     if reply.add(inode, (i + 1) as i64, kind.into(), name) {
                         break;
                     }
                 }
-                reply.ok();
+
+                return reply.ok();
             }
-            None => reply.error(libc::ENOENT),
         }
+
+        reply.error(libc::ENOENT);
     }
 }

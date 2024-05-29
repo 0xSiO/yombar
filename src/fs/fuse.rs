@@ -182,4 +182,19 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
         reply.error(libc::ENOENT);
     }
+
+    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            let parent_dir_id = match path.parent() {
+                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
+                None => return reply.error(libc::ENOENT),
+            };
+
+            if let Ok(target) = self.fs.get_link_target(path, parent_dir_id) {
+                return reply.data(target.as_bytes());
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
 }

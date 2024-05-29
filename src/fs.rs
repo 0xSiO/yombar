@@ -194,4 +194,29 @@ impl<'v> EncryptedFileSystem<'v> {
             BufWriter::new(file),
         ))
     }
+
+    fn get_link_target(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> io::Result<String> {
+        let ciphertext_path = self.get_ciphertext_path(&cleartext_path, &parent_dir_id)?;
+        let encrypted_link_path = ciphertext_path.join("symlink.c9r");
+
+        if encrypted_link_path.is_file() {
+            let mut decrypted = String::new();
+            DecryptStream::new(
+                self.vault.cryptor(),
+                BufReader::new(File::open(encrypted_link_path)?),
+            )
+            .read_to_string(&mut decrypted)?;
+
+            return Ok(decrypted);
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid file type",
+        ))
+    }
 }

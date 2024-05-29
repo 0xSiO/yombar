@@ -26,7 +26,7 @@ fn try_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> io::Res
 pub struct DecryptStream<C: FileCryptor, R: Read> {
     cryptor: C,
     inner: R,
-    header: Option<C::Header>,
+    header: Option<FileHeader>,
     chunk_number: usize,
     eof: bool,
     buffer: VecDeque<u8>,
@@ -40,7 +40,7 @@ impl<C: FileCryptor, R: Read> DecryptStream<C, R> {
             header: None,
             chunk_number: 0,
             eof: false,
-            buffer: VecDeque::with_capacity(C::MAX_CHUNK_LEN),
+            buffer: VecDeque::with_capacity(C::max_chunk_len()),
         }
     }
 }
@@ -49,7 +49,7 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // The file header must be read exactly once
         if self.header.is_none() {
-            let mut encrypted_header = vec![0; C::Header::ENCRYPTED_HEADER_LEN];
+            let mut encrypted_header = vec![0; C::encrypted_header_len()];
             self.inner.read_exact(&mut encrypted_header)?;
             self.header.replace(
                 self.cryptor
@@ -67,7 +67,7 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
             return Ok(0);
         }
 
-        let mut ciphertext_chunk = vec![0; C::MAX_ENCRYPTED_CHUNK_LEN];
+        let mut ciphertext_chunk = vec![0; C::max_encrypted_chunk_len()];
         match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
             // Got EOF immediately
             (false, 0) => {
@@ -99,7 +99,7 @@ impl<C: FileCryptor, R: Read> Read for DecryptStream<C, R> {
 pub struct EncryptStream<C: FileCryptor, W: Write> {
     cryptor: C,
     inner: W,
-    header: C::Header,
+    header: FileHeader,
     header_written: bool,
     chunk_number: usize,
     eof: bool,
@@ -107,7 +107,7 @@ pub struct EncryptStream<C: FileCryptor, W: Write> {
 }
 
 impl<C: FileCryptor, W: Write> EncryptStream<C, W> {
-    pub fn new(cryptor: C, header: C::Header, inner: W) -> Self {
+    pub fn new(cryptor: C, header: FileHeader, inner: W) -> Self {
         Self {
             cryptor,
             inner,
@@ -116,7 +116,7 @@ impl<C: FileCryptor, W: Write> EncryptStream<C, W> {
             header_written: false,
             chunk_number: 0,
             eof: false,
-            buffer: VecDeque::with_capacity(C::MAX_CHUNK_LEN),
+            buffer: VecDeque::with_capacity(C::max_chunk_len()),
         }
     }
 }
@@ -140,8 +140,8 @@ impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
         self.buffer.extend(buf);
 
         // Write as many full chunks as possible
-        while self.buffer.len() >= C::MAX_CHUNK_LEN {
-            let mut chunk = vec![0; C::MAX_CHUNK_LEN];
+        while self.buffer.len() >= C::max_chunk_len() {
+            let mut chunk = vec![0; C::max_chunk_len()];
             self.buffer.read_exact(&mut chunk)?;
             self.inner.write_all(
                 &self
@@ -158,7 +158,7 @@ impl<C: FileCryptor, W: Write> Write for EncryptStream<C, W> {
     fn flush(&mut self) -> io::Result<()> {
         // Write partial chunk if any leftover data in buffer
         if !self.buffer.is_empty() {
-            debug_assert!(self.buffer.len() < C::MAX_CHUNK_LEN);
+            debug_assert!(self.buffer.len() < C::max_chunk_len());
             let mut chunk = vec![0; self.buffer.len()];
             self.buffer.read_exact(&mut chunk)?;
             self.inner.write_all(

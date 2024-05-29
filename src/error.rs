@@ -21,7 +21,7 @@ pub enum KeyFromFileError {
 pub struct KekDerivationError(#[from] password_hash::Error);
 
 #[derive(Debug, thiserror::Error)]
-pub enum SivCtrMacCryptorError {
+pub enum CryptorError {
     #[error("invalid header length: {0}")]
     InvalidHeaderLen(usize),
     #[error("invalid chunk length: {0}")]
@@ -32,24 +32,8 @@ pub enum SivCtrMacCryptorError {
     RandError(#[from] rand_core::Error),
     #[error("failed to encrypt/decrypt using AES-CTR")]
     AesCtrError(#[from] aes::cipher::StreamCipherError),
-    #[error("failed to encrypt/decrypt using AES-SIV")]
-    AesSivError(#[from] aes_siv::Error),
-    #[error("failed to decode base64 string")]
-    Base64DecodeError(#[from] base64ct::Error),
-    #[error("failed to convert to UTF-8 string")]
-    InvalidUTF8(#[from] std::string::FromUtf8Error),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SivGcmCryptorError {
-    #[error("invalid header length: {0}")]
-    InvalidHeaderLen(usize),
-    #[error("invalid chunk length: {0}")]
-    InvalidChunkLen(usize),
-    #[error("failed to generate random bytes")]
-    RandError(#[from] rand_core::Error),
     #[error("failed to encrypt/decrypt using AEAD cipher")]
-    AeadError(#[from] aes_gcm::Error),
+    AeadError(#[from] aes_siv::Error), // This also covers AES-GCM errors
     #[error("failed to decode base64 string")]
     Base64DecodeError(#[from] base64ct::Error),
     #[error("failed to convert to UTF-8 string")]

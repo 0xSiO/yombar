@@ -29,6 +29,7 @@ impl From<FileKind> for FileType {
 struct Attributes {
     inode: Inode,
     kind: FileKind,
+    size: u64,
     meta: std::fs::Metadata,
 }
 
@@ -36,8 +37,7 @@ impl From<Attributes> for FileAttr {
     fn from(value: Attributes) -> Self {
         Self {
             ino: value.inode,
-            // TODO: This is wrong, calculate decrypted size somehow
-            size: value.meta.size(),
+            size: value.size,
             // TOD: Cryptomator sets this to 0, should we do the same?
             blocks: value.meta.blocks(),
             atime: value.meta.accessed().unwrap_or(UNIX_EPOCH),
@@ -100,14 +100,23 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             if let Ok(mut entries) = self.fs.get_virtual_dir_entries(path) {
                 let target_path = path.join(name);
 
-                if let Some((kind, meta)) = entries.remove(&target_path) {
+                if let Some((kind, size, meta)) = entries.remove(&target_path) {
                     let inode = *self
                         .paths_to_inodes
                         .entry(target_path.clone())
                         .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
                     self.inodes_to_paths.insert(inode, target_path);
 
-                    return reply.entry(&TTL, &FileAttr::from(Attributes { inode, kind, meta }), 0);
+                    return reply.entry(
+                        &TTL,
+                        &FileAttr::from(Attributes {
+                            inode,
+                            kind,
+                            size,
+                            meta,
+                        }),
+                        0,
+                    );
                 }
             }
         }
@@ -120,23 +129,26 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             let parent_dir_id = match path.parent() {
                 Some(parent) => self.fs.get_dir_id(parent).unwrap(),
                 None => {
+                    let meta = self.fs.root_dir().metadata().unwrap();
                     return reply.attr(
                         &TTL,
                         &FileAttr::from(Attributes {
                             inode: FUSE_ROOT_ID,
                             kind: FileKind::Directory,
-                            meta: self.fs.root_dir().metadata().unwrap(),
+                            size: meta.size(),
+                            meta,
                         }),
-                    )
+                    );
                 }
             };
 
-            if let Ok((kind, meta)) = self.fs.get_virtual_file_info(path, parent_dir_id) {
+            if let Ok((kind, size, meta)) = self.fs.get_virtual_file_info(path, parent_dir_id) {
                 return reply.attr(
                     &TTL,
                     &FileAttr::from(Attributes {
                         inode: ino,
                         kind,
+                        size,
                         meta,
                     }),
                 );
@@ -208,7 +220,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
             if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
                 for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
-                    let (path, (kind, _)) = entry;
+                    let (path, (kind, _, _)) = entry;
                     let name = path.file_name().unwrap().to_os_string();
                     let inode = *self
                         .paths_to_inodes

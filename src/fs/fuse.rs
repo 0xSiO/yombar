@@ -200,9 +200,12 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 let mut buffer = Vec::with_capacity(size as usize);
                 // TODO: Use Seek to skip to offset, don't read the whole thing, use file handles
                 reader.read_to_end(&mut buffer).unwrap();
-                buffer.truncate(size as usize);
                 // TODO: offset may be negative?
-                return reply.data(&buffer[offset as usize..]);
+                let start = (offset as usize).max(0).min(buffer.len() - 1);
+                let end = (offset as usize + size as usize)
+                    .max(0)
+                    .min(buffer.len() - 1);
+                return reply.data(&buffer[start..end]);
             }
         }
 

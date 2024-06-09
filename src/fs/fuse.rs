@@ -9,7 +9,7 @@ use std::{
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
-use crate::fs::{EncryptedFileSystem, FileKind};
+use crate::fs::{DirEntry, EncryptedFileSystem, FileKind};
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -28,30 +28,28 @@ impl From<FileKind> for FileType {
 #[derive(Debug)]
 struct Attributes {
     inode: Inode,
-    kind: FileKind,
-    size: u64,
-    meta: std::fs::Metadata,
+    entry: DirEntry,
 }
 
 impl From<Attributes> for FileAttr {
     fn from(value: Attributes) -> Self {
         Self {
             ino: value.inode,
-            size: value.size,
+            size: value.entry.size,
             // TOD: Cryptomator sets this to 0, should we do the same?
-            blocks: value.meta.blocks(),
-            atime: value.meta.accessed().unwrap_or(UNIX_EPOCH),
-            mtime: value.meta.modified().unwrap_or(UNIX_EPOCH),
+            blocks: value.entry.metadata.blocks(),
+            atime: value.entry.metadata.accessed().unwrap_or(UNIX_EPOCH),
+            mtime: value.entry.metadata.modified().unwrap_or(UNIX_EPOCH),
             // TODO: Is created() the right one to use here? Looks like Cryptomator does this also
-            ctime: value.meta.created().unwrap_or(UNIX_EPOCH),
-            crtime: value.meta.created().unwrap_or(UNIX_EPOCH),
-            kind: value.kind.into(),
-            perm: value.meta.permissions().mode() as u16,
-            nlink: value.meta.nlink() as u32,
-            uid: value.meta.uid(),
-            gid: value.meta.gid(),
-            rdev: value.meta.rdev() as u32,
-            blksize: value.meta.blksize() as u32,
+            ctime: value.entry.metadata.created().unwrap_or(UNIX_EPOCH),
+            crtime: value.entry.metadata.created().unwrap_or(UNIX_EPOCH),
+            kind: value.entry.kind.into(),
+            perm: value.entry.metadata.permissions().mode() as u16,
+            nlink: value.entry.metadata.nlink() as u32,
+            uid: value.entry.metadata.uid(),
+            gid: value.entry.metadata.gid(),
+            rdev: value.entry.metadata.rdev() as u32,
+            blksize: value.entry.metadata.blksize() as u32,
             flags: 0,
         }
     }
@@ -100,23 +98,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             if let Ok(mut entries) = self.fs.get_virtual_dir_entries(path) {
                 let target_path = path.join(name);
 
-                if let Some((kind, size, meta)) = entries.remove(&target_path) {
+                if let Some(entry) = entries.remove(&target_path) {
                     let inode = *self
                         .paths_to_inodes
                         .entry(target_path.clone())
                         .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
                     self.inodes_to_paths.insert(inode, target_path);
 
-                    return reply.entry(
-                        &TTL,
-                        &FileAttr::from(Attributes {
-                            inode,
-                            kind,
-                            size,
-                            meta,
-                        }),
-                        0,
-                    );
+                    return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
                 }
             }
         }
@@ -129,29 +118,23 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             let parent_dir_id = match path.parent() {
                 Some(parent) => self.fs.get_dir_id(parent).unwrap(),
                 None => {
-                    let meta = self.fs.root_dir().metadata().unwrap();
+                    let metadata = self.fs.root_dir().metadata().unwrap();
                     return reply.attr(
                         &TTL,
                         &FileAttr::from(Attributes {
                             inode: FUSE_ROOT_ID,
-                            kind: FileKind::Directory,
-                            size: meta.size(),
-                            meta,
+                            entry: DirEntry {
+                                kind: FileKind::Directory,
+                                size: metadata.size(),
+                                metadata,
+                            },
                         }),
                     );
                 }
             };
 
-            if let Ok((kind, size, meta)) = self.fs.get_virtual_file_info(path, parent_dir_id) {
-                return reply.attr(
-                    &TTL,
-                    &FileAttr::from(Attributes {
-                        inode: ino,
-                        kind,
-                        size,
-                        meta,
-                    }),
-                );
+            if let Ok(entry) = self.fs.get_virtual_dir_entry(path, parent_dir_id) {
+                return reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));
             }
         }
 
@@ -222,8 +205,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     ) {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
             if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
-                for (i, entry) in entries.into_iter().enumerate().skip(offset as usize) {
-                    let (path, (kind, _, _)) = entry;
+                for (i, (path, dir_entry)) in entries.into_iter().enumerate().skip(offset as usize)
+                {
                     let name = path.file_name().unwrap().to_os_string();
                     let inode = *self
                         .paths_to_inodes
@@ -232,7 +215,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     self.inodes_to_paths.insert(inode, path);
 
                     // i + 1 means the index of the next entry
-                    if reply.add(inode, (i + 1) as i64, kind.into(), name) {
+                    if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
                         break;
                     }
                 }

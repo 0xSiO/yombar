@@ -20,7 +20,12 @@ enum FileKind {
     Symlink,
 }
 
-type DirEntries = BTreeMap<PathBuf, (FileKind, u64, Metadata)>;
+#[derive(Debug)]
+struct DirEntry {
+    kind: FileKind,
+    size: u64,
+    metadata: Metadata,
+}
 
 #[derive(Debug)]
 pub struct EncryptedFileSystem<'v> {
@@ -111,16 +116,20 @@ impl<'v> EncryptedFileSystem<'v> {
         num_full_chunks * max_chunk_len + remainder_len
     }
 
-    fn get_virtual_file_info(
+    fn get_virtual_dir_entry(
         &self,
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<(FileKind, u64, Metadata)> {
+    ) -> io::Result<DirEntry> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
 
         if ciphertext_path.is_file() {
             let meta = ciphertext_path.metadata()?;
-            return Ok((FileKind::File, self.get_virtual_file_size(meta.len()), meta));
+            return Ok(DirEntry {
+                kind: FileKind::File,
+                size: self.get_virtual_file_size(meta.len()),
+                metadata: meta,
+            });
         }
 
         if ciphertext_path.is_dir() && ciphertext_path.join("dir.c9r").is_file() {
@@ -131,16 +140,20 @@ impl<'v> EncryptedFileSystem<'v> {
                 .join("d")
                 .join(self.vault.cryptor().hash_dir_id(dir_id).unwrap());
             let meta = hashed_dir_path.metadata()?;
-            return Ok((FileKind::Directory, meta.len(), meta));
+            return Ok(DirEntry {
+                kind: FileKind::Directory,
+                size: meta.len(),
+                metadata: meta,
+            });
         }
 
         if ciphertext_path.is_dir() && ciphertext_path.join("symlink.c9r").is_file() {
             let meta = ciphertext_path.join("symlink.c9r").metadata()?;
-            return Ok((
-                FileKind::Symlink,
-                self.get_virtual_file_size(meta.len()),
-                meta,
-            ));
+            return Ok(DirEntry {
+                kind: FileKind::Symlink,
+                size: self.get_virtual_file_size(meta.len()),
+                metadata: meta,
+            });
         }
 
         Err(io::Error::new(
@@ -149,7 +162,10 @@ impl<'v> EncryptedFileSystem<'v> {
         ))
     }
 
-    fn get_virtual_dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> io::Result<DirEntries> {
+    fn get_virtual_dir_entries(
+        &self,
+        cleartext_dir: impl AsRef<Path>,
+    ) -> io::Result<BTreeMap<PathBuf, DirEntry>> {
         let dir_id = self.get_dir_id(&cleartext_dir)?;
         let hashed_dir_path = self
             .vault
@@ -161,20 +177,16 @@ impl<'v> EncryptedFileSystem<'v> {
             .read_dir()?
             .collect::<io::Result<Vec<_>>>()?;
 
-        let mut cleartext_entries: DirEntries = Default::default();
+        let mut cleartext_entries: BTreeMap<PathBuf, DirEntry> = Default::default();
         for entry in ciphertext_entries {
             if entry.file_name() == "dirid.c9r" {
                 continue;
             }
 
             let cleartext_name = self.get_cleartext_name(entry.path(), &dir_id)?;
-            let (file_kind, size, metadata) =
-                self.get_virtual_file_info(cleartext_dir.as_ref().join(&cleartext_name), &dir_id)?;
-
-            cleartext_entries.insert(
-                cleartext_dir.as_ref().join(cleartext_name),
-                (file_kind, size, metadata),
-            );
+            let cleartext_path = cleartext_dir.as_ref().join(&cleartext_name);
+            let entry = self.get_virtual_dir_entry(&cleartext_path, &dir_id)?;
+            cleartext_entries.insert(cleartext_path, entry);
         }
 
         Ok(cleartext_entries)

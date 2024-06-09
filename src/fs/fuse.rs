@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{BufReader, Read},
+    io::{BufReader, Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -12,7 +12,7 @@ use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
 use crate::{
     fs::{DirEntry, EncryptedFileSystem, FileKind},
-    io::DecryptStream,
+    io::{try_read_exact, DecryptStream},
 };
 
 const TTL: Duration = Duration::from_secs(1);
@@ -190,34 +190,45 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn read(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
-        _fh: u64,
+        _ino: u64,
+        fh: u64,
         offset: i64,
         size: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
-            let parent_dir_id = match path.parent() {
-                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
-                None => return reply.error(libc::ENOENT),
-            };
-
-            if let Ok(mut reader) = self.fs.get_virtual_reader(path, parent_dir_id) {
-                let mut buffer = Vec::with_capacity(size as usize);
-                // TODO: Use Seek to skip to offset, don't read the whole thing, use file handles
-                reader.read_to_end(&mut buffer).unwrap();
-                // TODO: offset may be negative?
-                let start = (offset as usize).max(0).min(buffer.len() - 1);
-                let end = (offset as usize + size as usize)
-                    .max(0)
-                    .min(buffer.len() - 1);
-                return reply.data(&buffer[start..end]);
+        if let Some(reader) = self.file_handles.get_mut(&fh) {
+            debug_assert!(offset >= 0);
+            match reader.seek(SeekFrom::Start(offset as u64)) {
+                Ok(pos) => {
+                    debug_assert_eq!(pos, offset as u64);
+                    let mut buf = vec![0_u8; size as usize];
+                    if let (false, n) = try_read_exact(reader, &mut buf).unwrap() {
+                        buf.truncate(n)
+                    }
+                    return reply.data(&buf);
+                }
+                // TODO: Maybe add better error handling here
+                Err(_) => return reply.data(&[]),
             }
         }
 
         reply.error(libc::ENOENT);
+    }
+
+    fn release(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _ino: u64,
+        fh: u64,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        _flush: bool,
+        reply: fuser::ReplyEmpty,
+    ) {
+        self.file_handles.remove(&fh);
+        reply.ok();
     }
 
     fn readdir(

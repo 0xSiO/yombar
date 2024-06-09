@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs::{self, File, Metadata},
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufReader, BufWriter, Read},
     path::{Path, PathBuf},
 };
 
@@ -197,7 +197,7 @@ impl<'v> EncryptedFileSystem<'v> {
         &self,
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<DecryptStream<'_, impl Read>> {
+    ) -> io::Result<DecryptStream<'v, BufReader<File>>> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
         let file = File::open(ciphertext_path)?;
 
@@ -212,7 +212,7 @@ impl<'v> EncryptedFileSystem<'v> {
         &self,
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<EncryptStream<'_, impl Write>> {
+    ) -> io::Result<EncryptStream<'v, BufWriter<File>>> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
         let file = File::open(ciphertext_path)?;
 

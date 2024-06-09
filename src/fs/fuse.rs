@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
-    io::Read,
+    fs::File,
+    io::{BufReader, Read},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -9,7 +10,10 @@ use std::{
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
-use crate::fs::{DirEntry, EncryptedFileSystem, FileKind};
+use crate::{
+    fs::{DirEntry, EncryptedFileSystem, FileKind},
+    io::DecryptStream,
+};
 
 const TTL: Duration = Duration::from_secs(1);
 
@@ -55,12 +59,13 @@ impl From<Attributes> for FileAttr {
     }
 }
 
-#[derive(Debug)]
 pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     inodes_to_paths: BTreeMap<Inode, PathBuf>,
     paths_to_inodes: BTreeMap<PathBuf, Inode>,
+    file_handles: BTreeMap<u64, DecryptStream<'v, BufReader<File>>>,
     next_inode: AtomicU64,
+    next_file_handle: AtomicU64,
 }
 
 impl<'v> FuseFileSystem<'v> {
@@ -69,7 +74,9 @@ impl<'v> FuseFileSystem<'v> {
             fs,
             inodes_to_paths: Default::default(),
             paths_to_inodes: Default::default(),
+            file_handles: Default::default(),
             next_inode: AtomicU64::new(FUSE_ROOT_ID),
+            next_file_handle: AtomicU64::new(0),
         }
     }
 }
@@ -156,6 +163,24 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
             if let Ok(target) = self.fs.get_link_target(path, parent_dir_id) {
                 return reply.data(target.as_bytes());
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
+    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            let parent_dir_id = match path.parent() {
+                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
+                None => return reply.error(libc::ENOENT),
+            };
+
+            // TODO: Check flags, store a reader and a writer?
+            if let Ok(reader) = self.fs.get_virtual_reader(path, parent_dir_id) {
+                let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
+                self.file_handles.insert(fh, reader);
+                return reply.opened(fh, flags as u32);
             }
         }
 

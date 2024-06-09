@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{self, Read, Write},
+    io::{self, Cursor, Read, Seek, Write},
 };
 
 use crate::crypto::{Cryptor, FileCryptor, FileHeader};
@@ -29,20 +29,18 @@ pub struct DecryptStream<'k, R: Read> {
     header: Option<FileHeader>,
     chunk_number: usize,
     eof: bool,
-    buffer: VecDeque<u8>,
+    buffer: Cursor<Vec<u8>>,
 }
 
 impl<'k, R: Read> DecryptStream<'k, R> {
     pub fn new(cryptor: Cryptor<'k>, inner: R) -> Self {
-        let buffer = VecDeque::with_capacity(cryptor.max_chunk_len());
-
         Self {
             cryptor,
             inner,
             header: None,
             chunk_number: 0,
             eof: false,
-            buffer,
+            buffer: Default::default(),
         }
     }
 }
@@ -60,13 +58,10 @@ impl<'k, R: Read> Read for DecryptStream<'k, R> {
             );
         }
 
-        // If we have leftover data from a previous read, write that to buf
-        if !self.buffer.is_empty() {
-            return self.buffer.read(buf);
-        }
-
-        if self.eof {
-            return Ok(0);
+        // Try to use buffered data first if available
+        let mut bytes_read = self.buffer.read(buf)?;
+        if bytes_read == buf.len() || self.eof {
+            return Ok(bytes_read);
         }
 
         let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
@@ -74,7 +69,7 @@ impl<'k, R: Read> Read for DecryptStream<'k, R> {
             // Got EOF immediately
             (false, 0) => {
                 self.eof = true;
-                return Ok(0);
+                return Ok(bytes_read);
             }
             // Got some data, then hit EOF
             (false, n) => {
@@ -88,13 +83,21 @@ impl<'k, R: Read> Read for DecryptStream<'k, R> {
         // Safe to unwrap, header has been read by now
         let header = self.header.as_ref().unwrap();
 
-        self.buffer.extend(
+        self.buffer.get_mut().extend(
             self.cryptor
                 .decrypt_chunk(ciphertext_chunk, header, self.chunk_number)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
         self.chunk_number += 1;
-        self.buffer.read(buf)
+
+        bytes_read += self.buffer.read(&mut buf[bytes_read..])?;
+        Ok(bytes_read)
+    }
+}
+
+impl<'k, R: Read> Seek for DecryptStream<'k, R> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.buffer.seek(pos)
     }
 }
 

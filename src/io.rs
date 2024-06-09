@@ -32,6 +32,7 @@ pub struct DecryptStream<'k, R: Read> {
     header: Option<FileHeader>,
     chunk_number: usize,
     eof: bool,
+    // TODO: Don't buffer everything in here, maybe remove Seek impl if that's what it takes
     buffer: Cursor<Vec<u8>>,
 }
 

@@ -192,7 +192,9 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    #[allow(dead_code)]
+    // TODO: Write something that'll let us start at some given cleartext offset
+    //       Convert cleartext offset to chunk number with some math, then create a stream starting at
+    //       that chunk and skip to the offset
     fn get_virtual_reader(
         &self,
         cleartext_path: impl AsRef<Path>,

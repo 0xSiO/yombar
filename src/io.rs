@@ -113,6 +113,7 @@ impl<'k, R: Read> Seek for DecryptStream<'k, R> {
             SeekFrom::End(_) => {
                 self.buffer.seek(SeekFrom::End(0))?;
                 let mut buf = Vec::new();
+                // TODO: Don't do this :)
                 self.read_to_end(&mut buf)?;
 
                 self.buffer.seek(pos)

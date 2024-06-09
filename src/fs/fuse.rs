@@ -199,6 +199,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyData,
     ) {
         if let Some(reader) = self.file_handles.get_mut(&fh) {
+            let start_time = std::time::Instant::now();
             debug_assert!(offset >= 0);
             match reader.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
@@ -207,6 +208,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     if let (false, n) = try_read_exact(reader, &mut buf).unwrap() {
                         buf.truncate(n)
                     }
+                    log::debug!("read took {} ms", start_time.elapsed().as_millis());
                     return reply.data(&buf);
                 }
                 // TODO: Maybe add better error handling here

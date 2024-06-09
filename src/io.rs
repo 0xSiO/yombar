@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{self, Cursor, Read, Seek, Write},
+    io::{self, Cursor, Read, Seek, SeekFrom, Write},
 };
 
 use crate::crypto::{Cryptor, FileCryptor, FileHeader};
@@ -96,8 +96,32 @@ impl<'k, R: Read> Read for DecryptStream<'k, R> {
 }
 
 impl<'k, R: Read> Seek for DecryptStream<'k, R> {
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        self.buffer.seek(pos)
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        // TODO: Handle overflow/underflow where appropriate
+        match pos {
+            SeekFrom::Start(n) => {
+                if n > self.buffer.position() {
+                    let mut buf = vec![0; (n - self.buffer.position()) as usize];
+                    self.read_exact(&mut buf)?;
+                }
+
+                self.buffer.seek(pos)
+            }
+            SeekFrom::End(_) => {
+                self.buffer.seek(SeekFrom::End(0))?;
+                let mut buf = Vec::new();
+                self.read_to_end(&mut buf)?;
+
+                self.buffer.seek(pos)
+            }
+            SeekFrom::Current(n) => {
+                if n > 0 {
+                    self.seek(SeekFrom::Start(self.buffer.position() + n as u64))
+                } else {
+                    self.buffer.seek(pos)
+                }
+            }
+        }
     }
 }
 

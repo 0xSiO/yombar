@@ -1,9 +1,12 @@
 use std::{
     collections::VecDeque,
-    io::{self, Cursor, Read, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
 };
 
-use crate::crypto::{Cryptor, FileCryptor, FileHeader};
+use crate::{
+    crypto::{Cryptor, FileCryptor, FileHeader},
+    util,
+};
 
 /// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole
 /// buffer could be filled and the number of bytes read.
@@ -26,45 +29,38 @@ pub fn try_read_exact<R: Read + ?Sized>(
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub struct DecryptStream<'k, R: Read> {
+pub struct EncryptedStream<'k, I: Read + Seek> {
+    inner: I,
+    cleartext_size: u64,
     cryptor: Cryptor<'k>,
-    inner: R,
-    header: Option<FileHeader>,
-    chunk_number: usize,
-    eof: bool,
-    // TODO: Don't buffer everything in here, maybe remove Seek impl if that's what it takes
-    buffer: Cursor<Vec<u8>>,
+    file_header: FileHeader,
+    chunk_buffer: VecDeque<u8>,
 }
 
-impl<'k, R: Read> DecryptStream<'k, R> {
-    pub fn new(cryptor: Cryptor<'k>, inner: R) -> Self {
-        Self {
-            cryptor,
+impl<'k, I: Read + Seek> EncryptedStream<'k, I> {
+    pub fn open(cryptor: Cryptor<'k>, ciphertext_size: u64, mut inner: I) -> io::Result<Self> {
+        let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
+        inner.read_exact(&mut encrypted_header)?;
+        let file_header = cryptor
+            .decrypt_header(encrypted_header)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        Ok(Self {
             inner,
-            header: None,
-            chunk_number: 0,
-            eof: false,
-            buffer: Default::default(),
-        }
+            cleartext_size: util::get_cleartext_size(cryptor, ciphertext_size),
+            cryptor,
+            file_header,
+            chunk_buffer: Default::default(),
+        })
     }
 }
 
-impl<'k, R: Read> Read for DecryptStream<'k, R> {
+// TODO: Handle overflow/underflow as needed
+impl<'k, I: Read + Seek> Read for EncryptedStream<'k, I> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // The file header must be read exactly once
-        if self.header.is_none() {
-            let mut encrypted_header = vec![0; self.cryptor.encrypted_header_len()];
-            self.inner.read_exact(&mut encrypted_header)?;
-            self.header.replace(
-                self.cryptor
-                    .decrypt_header(encrypted_header)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-            );
-        }
-
         // Try to use buffered data first if available
-        let mut bytes_read = self.buffer.read(buf)?;
-        if bytes_read == buf.len() || self.eof {
+        let mut bytes_read = self.chunk_buffer.read(buf)?;
+        if bytes_read == buf.len() {
             return Ok(bytes_read);
         }
 
@@ -72,63 +68,90 @@ impl<'k, R: Read> Read for DecryptStream<'k, R> {
         match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
             // Got EOF immediately
             (false, 0) => {
-                self.eof = true;
                 return Ok(bytes_read);
             }
             // Got some data, then hit EOF
             (false, n) => {
                 ciphertext_chunk.truncate(n);
-                self.eof = true;
             }
             // Got a whole chunk, no EOF
             _ => {}
         }
 
-        // Safe to unwrap, header has been read by now
-        let header = self.header.as_ref().unwrap();
+        // Find beginning of current chunk, ignore header, and divide by max chunk length
+        let chunk_number = (self.inner.stream_position()?
+            - ciphertext_chunk.len() as u64
+            - self.cryptor.encrypted_header_len() as u64)
+            / self.cryptor.max_encrypted_chunk_len() as u64;
 
-        self.buffer.get_mut().extend(
+        self.chunk_buffer.extend(
             self.cryptor
-                .decrypt_chunk(ciphertext_chunk, header, self.chunk_number)
+                .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
-        self.chunk_number += 1;
 
-        bytes_read += self.buffer.read(&mut buf[bytes_read..])?;
+        bytes_read += self.chunk_buffer.read(&mut buf[bytes_read..])?;
+
         Ok(bytes_read)
     }
 }
 
-impl<'k, R: Read> Seek for DecryptStream<'k, R> {
+// TODO: Handle overflow/underflow as needed
+impl<'k, I: Read + Seek> Seek for EncryptedStream<'k, I> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        // TODO: Handle overflow/underflow where appropriate
         match pos {
             SeekFrom::Start(n) => {
-                if n > self.buffer.position() {
-                    let mut buf = vec![0; (n - self.buffer.position()) as usize];
-                    self.read_exact(&mut buf)?;
-                }
+                let num_full_chunks = n / self.cryptor.max_chunk_len() as u64;
+                let remainder = n % self.cryptor.max_chunk_len() as u64;
 
-                self.buffer.seek(pos)
+                // Move to the beginning of the appropriate chunk
+                let chunk_start = self.cryptor.encrypted_header_len() as u64
+                    + (num_full_chunks * self.cryptor.max_encrypted_chunk_len() as u64);
+                self.inner.seek(SeekFrom::Start(chunk_start))?;
+
+                // We're moving somewhere else, so forget the current chunk buffer
+                self.chunk_buffer.clear();
+
+                // Skip some bytes to move to the final position within the chunk
+                let mut temp = vec![0; remainder as usize];
+                self.read_exact(&mut temp)?;
+
+                Ok(n)
             }
-            SeekFrom::End(_) => {
-                self.buffer.seek(SeekFrom::End(0))?;
-                let mut buf = Vec::new();
-                // TODO: Don't do this :)
-                self.read_to_end(&mut buf)?;
-
-                self.buffer.seek(pos)
+            SeekFrom::End(n) => {
+                // Don't permit seeking beyond the end
+                let offset = -n.max(0) as u64;
+                self.seek(SeekFrom::Start(self.cleartext_size - offset))
             }
             SeekFrom::Current(n) => {
-                if n > 0 {
-                    self.seek(SeekFrom::Start(self.buffer.position() + n as u64))
-                } else {
-                    self.buffer.seek(pos)
+                let enc_header_len = self.cryptor.encrypted_header_len() as u64;
+                let max_enc_chunk_len = self.cryptor.max_encrypted_chunk_len() as u64;
+                let max_chunk_len = self.cryptor.max_chunk_len() as u64;
+
+                let chunk_number =
+                    (self.inner.stream_position()? - enc_header_len) / max_enc_chunk_len;
+                let mut chunk_remainder =
+                    (self.inner.stream_position()? - enc_header_len) % max_enc_chunk_len;
+
+                if chunk_remainder > 0 {
+                    chunk_remainder -= max_enc_chunk_len - max_chunk_len;
                 }
+
+                let current_pos = chunk_number * max_chunk_len + chunk_remainder;
+
+                let new_pos = if n > 0 {
+                    current_pos + n as u64
+                } else {
+                    current_pos - -n as u64
+                };
+
+                self.seek(SeekFrom::Start(new_pos))
             }
         }
     }
 }
+
+// TEMPORARY until we implement Write for EncryptedStream
 
 pub struct EncryptStream<'k, W: Write> {
     cryptor: Cryptor<'k>,

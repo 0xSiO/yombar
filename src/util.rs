@@ -9,7 +9,12 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
-use crate::{error::*, key::SUBKEY_LEN, MasterKey};
+use crate::{
+    crypto::{Cryptor, FileCryptor},
+    error::*,
+    key::SUBKEY_LEN,
+    MasterKey,
+};
 
 pub fn derive_kek(
     mut password: String,
@@ -55,6 +60,18 @@ pub fn verify_jwt<T: DeserializeOwned>(
         &DecodingKey::from_secret(key.raw_key()),
         &validation,
     )
+}
+
+pub fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
+    let max_enc_chunk_len = cryptor.max_encrypted_chunk_len() as u64;
+    let max_chunk_len = cryptor.max_chunk_len() as u64;
+    let enc_chunks_len = ciphertext_size - cryptor.encrypted_header_len() as u64;
+    let num_full_chunks = enc_chunks_len / max_enc_chunk_len;
+    // Length of last partial cleartext chunk, or zero if there is no partial chunk
+    let remainder = (enc_chunks_len % max_enc_chunk_len).max(max_enc_chunk_len - max_chunk_len)
+        - (max_enc_chunk_len - max_chunk_len);
+
+    num_full_chunks * max_chunk_len + remainder
 }
 
 #[cfg(test)]

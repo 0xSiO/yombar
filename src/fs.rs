@@ -5,12 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, Vault};
+use crate::{crypto::FileCryptor, io::EncryptedStream, util, Vault};
 
-mod encrypted_file;
 pub mod fuse;
-
-pub use self::encrypted_file::EncryptedFile;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum FileKind {
@@ -111,7 +108,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_file() {
             let meta = ciphertext_path.metadata()?;
-            let size = EncryptedFile::get_cleartext_size(self.vault.cryptor(), meta.len());
+            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::File,
                 size,
@@ -136,7 +133,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_dir() && ciphertext_path.join("symlink.c9r").is_file() {
             let meta = ciphertext_path.join("symlink.c9r").metadata()?;
-            let size = EncryptedFile::get_cleartext_size(self.vault.cryptor(), meta.len());
+            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::Symlink,
                 size,
@@ -180,14 +177,14 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    fn get_virtual_file(
+    fn get_encrypted_stream(
         &self,
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<EncryptedFile<'v>> {
+    ) -> io::Result<EncryptedStream<'v, File>> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
         let file = File::open(ciphertext_path)?;
-        EncryptedFile::open(self.vault.cryptor(), file)
+        EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
     }
 
     fn get_link_target(
@@ -200,7 +197,8 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if encrypted_link_path.is_file() {
             let mut decrypted = String::new();
-            EncryptedFile::open(self.vault.cryptor(), File::open(encrypted_link_path)?)?
+            let file = File::open(encrypted_link_path)?;
+            EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)?
                 .read_to_string(&mut decrypted)?;
 
             return Ok(decrypted);

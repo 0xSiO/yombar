@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fs::File,
     io::{Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
@@ -10,8 +11,8 @@ use std::{
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
 use crate::{
-    fs::{DirEntry, EncryptedFile, EncryptedFileSystem, FileKind},
-    io::try_read_exact,
+    fs::{DirEntry, EncryptedFileSystem, FileKind},
+    io::{try_read_exact, EncryptedStream},
 };
 
 const TTL: Duration = Duration::from_secs(1);
@@ -62,7 +63,7 @@ pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     inodes_to_paths: BTreeMap<Inode, PathBuf>,
     paths_to_inodes: BTreeMap<PathBuf, Inode>,
-    file_handles: BTreeMap<u64, EncryptedFile<'v>>,
+    file_handles: BTreeMap<u64, EncryptedStream<'v, File>>,
     next_inode: AtomicU64,
     next_file_handle: AtomicU64,
 }
@@ -176,9 +177,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             };
 
             // TODO: Maybe check flags and modify open options
-            if let Ok(file) = self.fs.get_virtual_file(path, parent_dir_id) {
+            if let Ok(stream) = self.fs.get_encrypted_stream(path, parent_dir_id) {
                 let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
-                self.file_handles.insert(fh, file);
+                self.file_handles.insert(fh, stream);
                 return reply.opened(fh, flags as u32);
             }
         }
@@ -197,14 +198,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(mut file) = self.file_handles.get_mut(&fh) {
+        if let Some(mut stream) = self.file_handles.get_mut(&fh) {
             let start_time = std::time::Instant::now();
             debug_assert!(offset >= 0);
-            match file.seek(SeekFrom::Start(offset as u64)) {
+            match stream.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    if let (false, n) = try_read_exact(&mut file, &mut buf).unwrap() {
+                    if let (false, n) = try_read_exact(&mut stream, &mut buf).unwrap() {
                         buf.truncate(n)
                     }
                     log::debug!("read took {} ms", start_time.elapsed().as_millis());

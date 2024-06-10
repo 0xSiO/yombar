@@ -177,16 +177,6 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    fn get_encrypted_stream(
-        &self,
-        cleartext_path: impl AsRef<Path>,
-        parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<EncryptedStream<'v, File>> {
-        let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
-        let file = File::open(ciphertext_path)?;
-        EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
-    }
-
     fn get_link_target(
         &self,
         cleartext_path: impl AsRef<Path>,
@@ -208,5 +198,15 @@ impl<'v> EncryptedFileSystem<'v> {
             io::ErrorKind::InvalidData,
             "invalid file type",
         ))
+    }
+
+    fn open_file(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        parent_dir_id: impl AsRef<str>,
+    ) -> io::Result<EncryptedStream<'v, File>> {
+        let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
+        let file = File::open(ciphertext_path)?;
+        EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
     }
 }

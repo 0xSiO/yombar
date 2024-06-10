@@ -177,7 +177,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             };
 
             // TODO: Maybe check flags and modify open options
-            if let Ok(stream) = self.fs.get_encrypted_stream(path, parent_dir_id) {
+            if let Ok(stream) = self.fs.open_file(path, parent_dir_id) {
                 let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
                 self.file_handles.insert(fh, stream);
                 return reply.opened(fh, flags as u32);

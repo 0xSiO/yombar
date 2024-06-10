@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     fs::File,
-    io::{self, BufReader, Read, Seek, SeekFrom},
+    io::{self, Read, Seek, SeekFrom},
 };
 
 use crate::{
@@ -11,15 +11,16 @@ use crate::{
 
 pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
+    // TODO: Maybe replace with a Read + Seek generic
     file: File,
     file_header: FileHeader,
     chunk_buffer: VecDeque<u8>,
 }
 
 impl<'k> EncryptedFile<'k> {
-    pub fn open(cryptor: Cryptor<'k>, file: File) -> io::Result<Self> {
+    pub fn open(cryptor: Cryptor<'k>, mut file: File) -> io::Result<Self> {
         let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
-        BufReader::new(&file).read_exact(&mut encrypted_header)?;
+        file.read_exact(&mut encrypted_header)?;
         let file_header = cryptor
             .decrypt_header(encrypted_header)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -54,10 +55,8 @@ impl<'k> Read for EncryptedFile<'k> {
             return Ok(bytes_read);
         }
 
-        let mut reader =
-            BufReader::with_capacity(self.cryptor.max_encrypted_chunk_len(), &self.file);
         let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
-        match try_read_exact(&mut reader, &mut ciphertext_chunk)? {
+        match try_read_exact(&mut self.file, &mut ciphertext_chunk)? {
             // Got EOF immediately
             (false, 0) => {
                 return Ok(bytes_read);

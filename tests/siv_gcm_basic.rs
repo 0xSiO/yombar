@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{BufReader, Read, Write},
+    io::{Read, Write},
     path::PathBuf,
     str::FromStr,
 };
@@ -8,6 +8,7 @@ use std::{
 use base64ct::{Base64, Encoding};
 use cryptomator::{
     crypto::FileCryptor,
+    fs::EncryptedFile,
     io::{DecryptStream, EncryptStream},
     util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
@@ -162,33 +163,27 @@ pub fn siv_gcm_basic() {
     );
 
     // Check reading smaller files
-    let mut stream = DecryptStream::new(
+    let mut file = EncryptedFile::open(
         cryptor,
-        BufReader::new(
-            File::open(
-                "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
-            )
+        File::open("tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r")
             .unwrap(),
-        ),
-    );
+    )
+    .unwrap();
 
     let mut decrypted = String::new();
-    stream.read_to_string(&mut decrypted).unwrap();
+    file.read_to_string(&mut decrypted).unwrap();
     assert_eq!(decrypted, "this is a test file with some text in it\n");
 
     // Check reading larger files
-    let mut stream = DecryptStream::new(
+    let mut file = EncryptedFile::open(
         cryptor,
-        BufReader::new(
-            File::open(
-                "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r",
-            )
+        File::open("tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r")
             .unwrap(),
-        ),
-    );
+    )
+    .unwrap();
 
     let mut decrypted = Vec::new();
-    stream.read_to_end(&mut decrypted).unwrap();
+    file.read_to_end(&mut decrypted).unwrap();
     assert_eq!(
         decrypted,
         fs::read("tests/fixtures/test_image.jpg").unwrap()

@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    io::{BufReader, Seek, SeekFrom},
+    io::{Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -197,15 +197,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(file) = self.file_handles.get_mut(&fh) {
+        if let Some(mut file) = self.file_handles.get_mut(&fh) {
             let start_time = std::time::Instant::now();
             debug_assert!(offset >= 0);
             match file.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    if let (false, n) = try_read_exact(&mut BufReader::new(file), &mut buf).unwrap()
-                    {
+                    if let (false, n) = try_read_exact(&mut file, &mut buf).unwrap() {
                         buf.truncate(n)
                     }
                     log::debug!("read took {} ms", start_time.elapsed().as_millis());

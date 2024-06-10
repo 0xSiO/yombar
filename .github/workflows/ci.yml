@@ -19,6 +19,9 @@ jobs:
 
     name: Rust ${{ matrix.rust }}
     steps:
+      - name: Install system dependencies
+        run: sudo apt-get install -y libfuse-dev
+
       - uses: actions/checkout@v2
 
       - name: Install Rust

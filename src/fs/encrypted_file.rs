@@ -37,13 +37,15 @@ impl<'k> EncryptedFile<'k> {
         let max_chunk_len = cryptor.max_chunk_len() as u64;
         let enc_chunks_len = ciphertext_size - cryptor.encrypted_header_len() as u64;
         let num_full_chunks = enc_chunks_len / max_enc_chunk_len;
-        // TODO: What if modulo returns 0
-        let remainder = enc_chunks_len % max_enc_chunk_len - (max_enc_chunk_len - max_chunk_len);
+        // Length of last partial cleartext chunk, or zero if there is no partial chunk
+        let remainder = (enc_chunks_len % max_enc_chunk_len).max(max_enc_chunk_len - max_chunk_len)
+            - (max_enc_chunk_len - max_chunk_len);
 
         num_full_chunks * max_chunk_len + remainder
     }
 }
 
+// TODO: Handle overflow/underflow as needed
 impl<'k> Read for EncryptedFile<'k> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Try to use buffered data first if available

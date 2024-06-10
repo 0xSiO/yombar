@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     fs::File,
     io::{Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
@@ -61,9 +61,9 @@ impl From<Attributes> for FileAttr {
 
 pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
-    inodes_to_paths: BTreeMap<Inode, PathBuf>,
-    paths_to_inodes: BTreeMap<PathBuf, Inode>,
-    file_handles: BTreeMap<u64, EncryptedStream<'v, File>>,
+    inodes_to_paths: HashMap<Inode, PathBuf>,
+    paths_to_inodes: HashMap<PathBuf, Inode>,
+    file_handles: HashMap<u64, EncryptedStream<'v, File>>,
     next_inode: AtomicU64,
     next_file_handle: AtomicU64,
 }

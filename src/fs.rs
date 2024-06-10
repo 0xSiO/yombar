@@ -1,17 +1,16 @@
 use std::{
     collections::BTreeMap,
     fs::{self, File, Metadata},
-    io::{self, BufReader, BufWriter, Read},
+    io::{self, Read},
     path::{Path, PathBuf},
 };
 
-use crate::{
-    crypto::FileCryptor,
-    io::{DecryptStream, EncryptStream},
-    Vault,
-};
+use crate::{crypto::FileCryptor, Vault};
 
+mod encrypted_file;
 pub mod fuse;
+
+pub use self::encrypted_file::EncryptedFile;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum FileKind {
@@ -103,19 +102,6 @@ impl<'v> EncryptedFileSystem<'v> {
         )
     }
 
-    fn get_virtual_file_size(&self, ciphertext_file_size: u64) -> u64 {
-        let max_encrypted_chunk_len = self.vault.cryptor().max_encrypted_chunk_len() as u64;
-        let max_chunk_len = self.vault.cryptor().max_chunk_len() as u64;
-        let encrypted_chunks_len =
-            ciphertext_file_size - self.vault.cryptor().encrypted_header_len() as u64;
-        let num_full_chunks = encrypted_chunks_len / max_encrypted_chunk_len;
-        let remainder_len = encrypted_chunks_len
-            - num_full_chunks * max_encrypted_chunk_len
-            - (max_encrypted_chunk_len - max_chunk_len);
-
-        num_full_chunks * max_chunk_len + remainder_len
-    }
-
     fn get_virtual_dir_entry(
         &self,
         cleartext_path: impl AsRef<Path>,
@@ -125,9 +111,10 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_file() {
             let meta = ciphertext_path.metadata()?;
+            let size = EncryptedFile::get_cleartext_size(self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::File,
-                size: self.get_virtual_file_size(meta.len()),
+                size,
                 metadata: meta,
             });
         }
@@ -149,9 +136,10 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_dir() && ciphertext_path.join("symlink.c9r").is_file() {
             let meta = ciphertext_path.join("symlink.c9r").metadata()?;
+            let size = EncryptedFile::get_cleartext_size(self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::Symlink,
-                size: self.get_virtual_file_size(meta.len()),
+                size,
                 metadata: meta,
             });
         }
@@ -192,38 +180,14 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    // TODO: Write something that'll let us start at some given cleartext offset
-    //       Convert cleartext offset to chunk number with some math, then create a stream starting at
-    //       that chunk and skip to the offset
-    fn get_virtual_reader(
+    fn get_virtual_file(
         &self,
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<DecryptStream<'v, BufReader<File>>> {
+    ) -> io::Result<EncryptedFile<'v>> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
         let file = File::open(ciphertext_path)?;
-
-        Ok(DecryptStream::new(
-            self.vault.cryptor(),
-            BufReader::new(file),
-        ))
-    }
-
-    #[allow(dead_code)]
-    fn get_virtual_writer(
-        &self,
-        cleartext_path: impl AsRef<Path>,
-        parent_dir_id: impl AsRef<str>,
-    ) -> io::Result<EncryptStream<'v, BufWriter<File>>> {
-        let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
-        let file = File::open(ciphertext_path)?;
-
-        Ok(EncryptStream::new(
-            self.vault.cryptor(),
-            // TODO: Is it okay to re-encrypt everything with a new content key like this?
-            self.vault.cryptor().new_header()?,
-            BufWriter::new(file),
-        ))
+        EncryptedFile::open(self.vault.cryptor(), file)
     }
 
     fn get_link_target(
@@ -236,11 +200,8 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if encrypted_link_path.is_file() {
             let mut decrypted = String::new();
-            DecryptStream::new(
-                self.vault.cryptor(),
-                BufReader::new(File::open(encrypted_link_path)?),
-            )
-            .read_to_string(&mut decrypted)?;
+            EncryptedFile::open(self.vault.cryptor(), File::open(encrypted_link_path)?)?
+                .read_to_string(&mut decrypted)?;
 
             return Ok(decrypted);
         }

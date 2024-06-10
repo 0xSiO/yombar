@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    fs::File,
     io::{BufReader, Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
@@ -11,8 +10,8 @@ use std::{
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
 use crate::{
-    fs::{DirEntry, EncryptedFileSystem, FileKind},
-    io::{try_read_exact, DecryptStream},
+    fs::{DirEntry, EncryptedFile, EncryptedFileSystem, FileKind},
+    io::try_read_exact,
 };
 
 const TTL: Duration = Duration::from_secs(1);
@@ -63,7 +62,7 @@ pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     inodes_to_paths: BTreeMap<Inode, PathBuf>,
     paths_to_inodes: BTreeMap<PathBuf, Inode>,
-    file_handles: BTreeMap<u64, DecryptStream<'v, BufReader<File>>>,
+    file_handles: BTreeMap<u64, EncryptedFile<'v>>,
     next_inode: AtomicU64,
     next_file_handle: AtomicU64,
 }
@@ -176,10 +175,10 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 None => return reply.error(libc::ENOENT),
             };
 
-            // TODO: Check flags, store a reader and a writer?
-            if let Ok(reader) = self.fs.get_virtual_reader(path, parent_dir_id) {
+            // TODO: Maybe check flags and modify open options
+            if let Ok(file) = self.fs.get_virtual_file(path, parent_dir_id) {
                 let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
-                self.file_handles.insert(fh, reader);
+                self.file_handles.insert(fh, file);
                 return reply.opened(fh, flags as u32);
             }
         }
@@ -198,14 +197,15 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(reader) = self.file_handles.get_mut(&fh) {
+        if let Some(file) = self.file_handles.get_mut(&fh) {
             let start_time = std::time::Instant::now();
             debug_assert!(offset >= 0);
-            match reader.seek(SeekFrom::Start(offset as u64)) {
+            match file.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    if let (false, n) = try_read_exact(reader, &mut buf).unwrap() {
+                    if let (false, n) = try_read_exact(&mut BufReader::new(file), &mut buf).unwrap()
+                    {
                         buf.truncate(n)
                     }
                     log::debug!("read took {} ms", start_time.elapsed().as_millis());

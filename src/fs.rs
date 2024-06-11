@@ -5,6 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use base64ct::{Base64Url, Encoding};
+use sha1::{Digest, Sha1};
+
 use crate::{crypto::FileCryptor, io::EncryptedStream, util, Vault};
 
 pub mod fuse;
@@ -60,31 +63,54 @@ impl<'v> EncryptedFileSystem<'v> {
         cleartext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
     ) -> io::Result<PathBuf> {
-        let mut path = self.vault.path().join("d").join(
-            self.vault
-                .cryptor()
-                .hash_dir_id(&parent_dir_id)
-                .unwrap()
-                .join(self.get_ciphertext_name(cleartext_path, parent_dir_id)?),
-        );
-        path.set_extension("c9r");
+        let ciphertext_name = self.get_ciphertext_name(cleartext_path, &parent_dir_id)?;
+        let mut path = self
+            .vault
+            .path()
+            .join("d")
+            .join(self.vault.cryptor().hash_dir_id(parent_dir_id).unwrap());
+
+        if ciphertext_name.len() > self.vault.config().claims.shortening_threshold as usize {
+            // TODO: This doesn't seem to be working correctly
+            let hash = Sha1::new().chain_update(ciphertext_name).finalize();
+            path = path.join(Base64Url::encode_string(&hash));
+            path.set_extension("c9s");
+        } else {
+            path = path.join(ciphertext_name);
+            path.set_extension("c9r");
+        }
 
         Ok(path)
     }
 
-    // TODO: Handle case when name is too long to be stored in the file stem
+    // TODO: Be more careful about unwrap/unwrap_or_default
     fn get_cleartext_name(
         &self,
         ciphertext_path: impl AsRef<Path>,
         parent_dir_id: impl AsRef<str>,
     ) -> io::Result<String> {
-        // TODO: unwrap_or_default may not be the best idea
-        let stem = ciphertext_path.as_ref().file_stem().unwrap_or_default();
+        let extension = ciphertext_path.as_ref().extension().unwrap();
 
-        self.vault
-            .cryptor()
-            .decrypt_name(stem.to_string_lossy(), parent_dir_id)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        if extension == "c9s" {
+            let mut ciphertext_name = PathBuf::from(fs::read_to_string(
+                ciphertext_path.as_ref().join("name.c9s"),
+            )?);
+
+            // Remove .c9r from name
+            ciphertext_name.set_extension("");
+
+            self.vault
+                .cryptor()
+                .decrypt_name(ciphertext_name.to_string_lossy(), parent_dir_id)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        } else {
+            let stem = ciphertext_path.as_ref().file_stem().unwrap_or_default();
+
+            self.vault
+                .cryptor()
+                .decrypt_name(stem.to_string_lossy(), parent_dir_id)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }
     }
 
     fn get_dir_id(&self, cleartext_dir: impl AsRef<Path>) -> io::Result<String> {
@@ -108,6 +134,16 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_file() {
             let meta = ciphertext_path.metadata()?;
+            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+            return Ok(DirEntry {
+                kind: FileKind::File,
+                size,
+                metadata: meta,
+            });
+        }
+
+        if ciphertext_path.is_dir() && ciphertext_path.join("contents.c9r").is_file() {
+            let meta = ciphertext_path.join("contents.c9r").metadata()?;
             let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::File,
@@ -206,7 +242,13 @@ impl<'v> EncryptedFileSystem<'v> {
         parent_dir_id: impl AsRef<str>,
     ) -> io::Result<EncryptedStream<'v, File>> {
         let ciphertext_path = self.get_ciphertext_path(cleartext_path, parent_dir_id)?;
-        let file = File::open(ciphertext_path)?;
+
+        let file = if ciphertext_path.join("contents.c9r").is_file() {
+            File::open(ciphertext_path.join("contents.c9r"))?
+        } else {
+            File::open(ciphertext_path)?
+        };
+
         EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
     }
 }

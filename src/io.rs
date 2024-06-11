@@ -55,44 +55,41 @@ impl<'k, I: Read + Seek> EncryptedStream<'k, I> {
     }
 }
 
-// TODO: Handle overflow/underflow as needed
 impl<'k, I: Read + Seek> Read for EncryptedStream<'k, I> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // Try to use buffered data first if available
-        let mut bytes_read = self.chunk_buffer.read(buf)?;
-        if bytes_read == buf.len() {
-            return Ok(bytes_read);
+        if self.chunk_buffer.len() <= buf.len() {
+            // Try to fill up the buffer's remaining space as best we can
+            let chunks_to_read =
+                1.max((buf.len() - self.chunk_buffer.len()) / self.cryptor.max_chunk_len());
+
+            for _ in 0..chunks_to_read {
+                let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
+                match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
+                    // Got EOF immediately
+                    (false, 0) => break,
+                    // Got some data, then hit EOF
+                    (false, n) => ciphertext_chunk.truncate(n),
+                    // Got a whole chunk, no EOF
+                    _ => {}
+                }
+
+                // Find beginning of current chunk, ignore header, and divide by max chunk length
+                let chunk_number = (self
+                    .inner
+                    .stream_position()?
+                    .saturating_sub(ciphertext_chunk.len() as u64)
+                    .saturating_sub(self.cryptor.encrypted_header_len() as u64))
+                    / self.cryptor.max_encrypted_chunk_len() as u64;
+
+                self.chunk_buffer.extend(
+                    self.cryptor
+                        .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+                );
+            }
         }
 
-        let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
-        match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
-            // Got EOF immediately
-            (false, 0) => {
-                return Ok(bytes_read);
-            }
-            // Got some data, then hit EOF
-            (false, n) => {
-                ciphertext_chunk.truncate(n);
-            }
-            // Got a whole chunk, no EOF
-            _ => {}
-        }
-
-        // Find beginning of current chunk, ignore header, and divide by max chunk length
-        let chunk_number = (self.inner.stream_position()?
-            - ciphertext_chunk.len() as u64
-            - self.cryptor.encrypted_header_len() as u64)
-            / self.cryptor.max_encrypted_chunk_len() as u64;
-
-        self.chunk_buffer.extend(
-            self.cryptor
-                .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-        );
-
-        bytes_read += self.chunk_buffer.read(&mut buf[bytes_read..])?;
-
-        Ok(bytes_read)
+        self.chunk_buffer.read(buf)
     }
 }
 

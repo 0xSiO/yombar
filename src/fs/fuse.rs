@@ -103,19 +103,18 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
-        if let Some(path) = self.inodes_to_paths.get(&parent) {
-            if let Ok(mut entries) = self.fs.get_virtual_dir_entries(path) {
-                let target_path = path.join(name);
+        if let Some(parent_path) = self.inodes_to_paths.get(&parent) {
+            let parent_dir_id = self.fs.get_dir_id(parent_path).unwrap();
+            let target_path = parent_path.join(name);
 
-                if let Some(entry) = entries.remove(&target_path) {
-                    let inode = *self
-                        .paths_to_inodes
-                        .entry(target_path.clone())
-                        .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
-                    self.inodes_to_paths.insert(inode, target_path);
+            if let Ok(entry) = self.fs.get_virtual_dir_entry(&target_path, parent_dir_id) {
+                let inode = *self
+                    .paths_to_inodes
+                    .entry(target_path.clone())
+                    .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
+                self.inodes_to_paths.insert(inode, target_path);
 
-                    return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
-                }
+                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
             }
         }
 

@@ -55,7 +55,8 @@ impl<'v> EncryptedFileSystem<'v> {
                 cleartext_path.as_ref().file_name().unwrap(),
                 parent_dir_id.as_ref(),
             )
-            .unwrap())
+            .unwrap()
+            + ".c9r")
     }
 
     fn get_ciphertext_path(
@@ -71,13 +72,10 @@ impl<'v> EncryptedFileSystem<'v> {
             .join(self.vault.cryptor().hash_dir_id(parent_dir_id).unwrap());
 
         if ciphertext_name.len() > self.vault.config().claims.shortening_threshold as usize {
-            // TODO: This doesn't seem to be working correctly
             let hash = Sha1::new().chain_update(ciphertext_name).finalize();
-            path = path.join(Base64Url::encode_string(&hash));
-            path.set_extension("c9s");
+            path = path.join(Base64Url::encode_string(&hash) + ".c9s");
         } else {
             path = path.join(ciphertext_name);
-            path.set_extension("c9r");
         }
 
         Ok(path)

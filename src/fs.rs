@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::{self, File, Metadata},
     io::{self, Read},
     path::{Path, PathBuf},
@@ -150,7 +150,7 @@ impl<'v> EncryptedFileSystem<'v> {
     fn get_virtual_dir_entries(
         &self,
         cleartext_dir: impl AsRef<Path>,
-    ) -> io::Result<HashMap<PathBuf, DirEntry>> {
+    ) -> io::Result<BTreeMap<PathBuf, DirEntry>> {
         let dir_id = self.get_dir_id(&cleartext_dir)?;
         let hashed_dir_path = self
             .vault
@@ -162,7 +162,7 @@ impl<'v> EncryptedFileSystem<'v> {
             .read_dir()?
             .collect::<io::Result<Vec<_>>>()?;
 
-        let mut cleartext_entries: HashMap<PathBuf, DirEntry> = Default::default();
+        let mut cleartext_entries: BTreeMap<PathBuf, DirEntry> = Default::default();
         for entry in ciphertext_entries {
             if entry.file_name() == "dirid.c9r" {
                 continue;

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::{Seek, SeekFrom},
     os::unix::fs::{MetadataExt, PermissionsExt},
@@ -63,6 +63,7 @@ pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     inodes_to_paths: HashMap<Inode, PathBuf>,
     paths_to_inodes: HashMap<PathBuf, Inode>,
+    dir_entries: HashMap<Inode, BTreeMap<PathBuf, DirEntry>>,
     file_handles: HashMap<u64, EncryptedStream<'v, File>>,
     next_inode: AtomicU64,
     next_file_handle: AtomicU64,
@@ -74,6 +75,7 @@ impl<'v> FuseFileSystem<'v> {
             fs,
             inodes_to_paths: Default::default(),
             paths_to_inodes: Default::default(),
+            dir_entries: Default::default(),
             file_handles: Default::default(),
             next_inode: AtomicU64::new(FUSE_ROOT_ID),
             next_file_handle: AtomicU64::new(0),
@@ -199,7 +201,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyData,
     ) {
         if let Some(mut stream) = self.file_handles.get_mut(&fh) {
-            let start_time = std::time::Instant::now();
             debug_assert!(offset >= 0);
             match stream.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
@@ -208,7 +209,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     if let (false, n) = try_read_exact(&mut stream, &mut buf).unwrap() {
                         buf.truncate(n)
                     }
-                    log::debug!("read took {} ms", start_time.elapsed().as_millis());
                     return reply.data(&buf);
                 }
                 // TODO: Maybe add better error handling here
@@ -233,6 +233,24 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
+    fn opendir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        flags: i32,
+        reply: fuser::ReplyOpen,
+    ) {
+        if let Some(path) = self.inodes_to_paths.get(&ino) {
+            if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
+                self.dir_entries.insert(ino, entries);
+                // TODO: Do we need to allocate a file handle?
+                return reply.opened(0, flags as u32);
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn readdir(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -241,27 +259,38 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
-            if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
-                for (i, (path, dir_entry)) in entries.into_iter().enumerate().skip(offset as usize)
-                {
-                    let name = path.file_name().unwrap().to_os_string();
-                    let inode = *self
-                        .paths_to_inodes
-                        .entry(path.clone())
-                        .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
-                    self.inodes_to_paths.insert(inode, path);
+        if let Some(entries) = self.dir_entries.get(&ino) {
+            for (i, (path, dir_entry)) in entries.iter().enumerate().skip(offset as usize) {
+                let name = path.file_name().unwrap().to_os_string();
+                let inode = *self
+                    .paths_to_inodes
+                    .entry(path.clone())
+                    .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
+                self.inodes_to_paths.insert(inode, path.clone());
 
-                    // i + 1 means the index of the next entry
-                    if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
-                        break;
-                    }
+                // i + 1 means the index of the next entry
+                if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
+                    break;
                 }
-
-                return reply.ok();
             }
+
+            return reply.ok();
         }
 
         reply.error(libc::ENOENT);
+    }
+
+    fn releasedir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        _fh: u64,
+        _flags: i32,
+        reply: fuser::ReplyEmpty,
+    ) {
+        match self.dir_entries.remove(&ino) {
+            Some(_) => reply.ok(),
+            None => reply.error(libc::ENOENT),
+        }
     }
 }

@@ -93,7 +93,6 @@ impl<'k, I: Read + Seek> Read for EncryptedStream<'k, I> {
     }
 }
 
-// TODO: Handle overflow/underflow as needed
 impl<'k, I: Read + Seek> Seek for EncryptedStream<'k, I> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match pos {
@@ -116,30 +115,28 @@ impl<'k, I: Read + Seek> Seek for EncryptedStream<'k, I> {
                 Ok(n)
             }
             SeekFrom::End(n) => {
-                // Don't permit seeking beyond the end
+                // Don't permit seeking past the beginning or end
                 let offset = -n.max(0) as u64;
-                self.seek(SeekFrom::Start(self.cleartext_size - offset))
+                self.seek(SeekFrom::Start(self.cleartext_size.saturating_sub(offset)))
             }
             SeekFrom::Current(n) => {
                 let enc_header_len = self.cryptor.encrypted_header_len() as u64;
                 let max_enc_chunk_len = self.cryptor.max_encrypted_chunk_len() as u64;
                 let max_chunk_len = self.cryptor.max_chunk_len() as u64;
 
-                let chunk_number =
-                    (self.inner.stream_position()? - enc_header_len) / max_enc_chunk_len;
-                let mut chunk_remainder =
-                    (self.inner.stream_position()? - enc_header_len) % max_enc_chunk_len;
+                let chunk_number = (self.inner.stream_position()?.saturating_sub(enc_header_len))
+                    / max_enc_chunk_len;
+                let chunk_remainder =
+                    (self.inner.stream_position()?.saturating_sub(enc_header_len))
+                        % max_enc_chunk_len;
+                let remainder = chunk_remainder.saturating_sub(max_enc_chunk_len - max_chunk_len);
 
-                if chunk_remainder > 0 {
-                    chunk_remainder -= max_enc_chunk_len - max_chunk_len;
-                }
-
-                let current_pos = chunk_number * max_chunk_len + chunk_remainder;
+                let current_pos = chunk_number * max_chunk_len + remainder;
 
                 let new_pos = if n > 0 {
-                    current_pos + n as u64
+                    current_pos.saturating_add_signed(n)
                 } else {
-                    current_pos - -n as u64
+                    current_pos.saturating_sub(-n as u64)
                 };
 
                 self.seek(SeekFrom::Start(new_pos))

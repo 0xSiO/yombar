@@ -249,4 +249,41 @@ impl<'v> EncryptedFileSystem<'v> {
 
         EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
     }
+
+    // TODO: Need to write an abstraction for encrypted files so I don't need to deal with all this
+    //       path nonsense
+    // fn rename_file(
+    //     &self,
+    //     old_parent: impl AsRef<Path>,
+    //     old_name: &OsStr,
+    //     new_parent: impl AsRef<Path>,
+    //     new_name: &OsStr,
+    // ) -> io::Result<()> {
+    //     let old_dir_id = self.get_dir_id(old_parent)?;
+    //     let old_ciphertext_path =
+    //         self.get_ciphertext_path(old_parent.as_ref().join(old_name), old_dir_id)?;
+    //     let new_dir_id = self.get_dir_id(new_parent)?;
+    //     let new_ciphertext_path =
+    //         self.get_ciphertext_path(new_parent.as_ref().join(new_name), new_dir_id)?;
+    //
+    //     match (
+    //         old_ciphertext_path.extension().unwrap(),
+    //         new_ciphertext_path.extension().unwrap(),
+    //     ) {
+    //         ("c9r", "c9r") => fs::rename(old_ciphertext_path, new_ciphertext_path),
+    //         ("c9r", "c9s") => {
+    //             fs::create_dir_all(new_ciphertext_path)?;
+    //             fs::write(
+    //                 new_ciphertext_path.join("name.c9s"),
+    //                 self.get_ciphertext_name(new_parent.as_ref().join(new_name), new_dir_id)?,
+    //             )?;
+    //             fs::rename(
+    //                 old_ciphertext_path,
+    //                 new_ciphertext_path.join("contents.c9r"),
+    //             )
+    //         }
+    //         ("c9s", "c9r") => {}
+    //         ("c9s", "c9s") => {}
+    //     }
+    // }
 }

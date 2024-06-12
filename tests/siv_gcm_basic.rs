@@ -80,17 +80,17 @@ pub fn siv_gcm_basic() {
     assert_eq!(
         cryptor
             .decrypt_name(
-                "Z3G0EjTJ_CVo_FJiPsi2FYIWsjuPGCXjz4m48roKTg==",
-                "821474ed-5d81-4048-b96b-803d61c8faf3"
+                "j2O1bILonFELjBCQTaqZEBgfUh1_uHvXjOdMdc2ZEg==",
+                "1a3534ba-34fb-4ba6-ad67-1e37627d40be"
             )
             .unwrap(),
         "test_file_2.txt"
     );
     assert_eq!(
         cryptor
-            .encrypt_name("test_file_2.txt", "821474ed-5d81-4048-b96b-803d61c8faf3")
+            .encrypt_name("test_file_2.txt", "1a3534ba-34fb-4ba6-ad67-1e37627d40be")
             .unwrap(),
-        "Z3G0EjTJ_CVo_FJiPsi2FYIWsjuPGCXjz4m48roKTg==",
+        "j2O1bILonFELjBCQTaqZEBgfUh1_uHvXjOdMdc2ZEg=="
     );
 
     // Check file header encryption/decryption
@@ -136,13 +136,13 @@ pub fn siv_gcm_basic() {
 
     // Check subdirectory ID hashing
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/XM/PPTCRW2EF565IK4B7JPQGTNDXAU7KX/dirid.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/RT/C3KT7DD5C3X6QE32X4IL6PM6WHHNB5/dirid.c9r",
     )
     .unwrap();
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "obY0WWvtG+fKQ0hCDTREt5nUamr3dYnHTK0ce6JBemlRl7eL/eqCJiw8uq7ygsMWy4BkNS++1wJsFTpSZUTotVF+lqEsORmBEFrx0augFp6to1u9/4cXt+t8/YjGbUQ1M/w21m+l5SNwvDMD2dub8oN3l95M0bNcrRFLVRpj44fvLp0T"
+        "u53iAARXqaZVGLJMguDq2KQZ2A5eu/jxzjsqapLwVGEe2FeazwpWRptqUHEFzKVwbFh16L7Y++pR1s+WunbJU0uOKvVS9lDTEV9B9MsjSOIijAsUg0tgcoOplb5BL5Og0G10AgbWCall/smk1fgsWaIF0y2g8ScFhlmMJGA7HhXqolOf"
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..68]).unwrap();
@@ -151,14 +151,14 @@ pub fn siv_gcm_basic() {
         cryptor
             .decrypt_chunk(&ciphertext[68..], &header, 0)
             .unwrap(),
-        b"821474ed-5d81-4048-b96b-803d61c8faf3"
+        b"1a3534ba-34fb-4ba6-ad67-1e37627d40be"
     );
 
     assert_eq!(
         cryptor
-            .hash_dir_id("821474ed-5d81-4048-b96b-803d61c8faf3")
+            .hash_dir_id("1a3534ba-34fb-4ba6-ad67-1e37627d40be")
             .unwrap(),
-        PathBuf::from("XM").join("PPTCRW2EF565IK4B7JPQGTNDXAU7KX")
+        PathBuf::from("RT").join("C3KT7DD5C3X6QE32X4IL6PM6WHHNB5")
     );
 
     // Check reading smaller files

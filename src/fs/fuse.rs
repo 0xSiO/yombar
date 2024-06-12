@@ -2,7 +2,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     fs::File,
     io::{Seek, SeekFrom},
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{MetadataExt, PermissionsExt},
+    },
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, UNIX_EPOCH},
@@ -104,10 +107,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent_path) = self.inodes_to_paths.get(&parent) {
-            let parent_dir_id = self.fs.get_dir_id(parent_path).unwrap();
             let target_path = parent_path.join(name);
 
-            if let Ok(entry) = self.fs.get_virtual_dir_entry(&target_path, parent_dir_id) {
+            if let Ok(entry) = self.fs.dir_entry(&target_path) {
                 let inode = *self
                     .paths_to_inodes
                     .entry(target_path.clone())
@@ -123,25 +125,22 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
-            let parent_dir_id = match path.parent() {
-                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
-                None => {
-                    let metadata = self.fs.root_dir().metadata().unwrap();
-                    return reply.attr(
-                        &TTL,
-                        &FileAttr::from(Attributes {
-                            inode: FUSE_ROOT_ID,
-                            entry: DirEntry {
-                                kind: FileKind::Directory,
-                                size: metadata.size(),
-                                metadata,
-                            },
-                        }),
-                    );
-                }
-            };
+            if path.parent().is_none() {
+                let metadata = self.fs.root_dir().metadata().unwrap();
+                return reply.attr(
+                    &TTL,
+                    &FileAttr::from(Attributes {
+                        inode: FUSE_ROOT_ID,
+                        entry: DirEntry {
+                            kind: FileKind::Directory,
+                            size: metadata.size(),
+                            metadata,
+                        },
+                    }),
+                );
+            }
 
-            if let Ok(entry) = self.fs.get_virtual_dir_entry(path, parent_dir_id) {
+            if let Ok(entry) = self.fs.dir_entry(path) {
                 return reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));
             }
         }
@@ -157,13 +156,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
-            let parent_dir_id = match path.parent() {
-                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
-                None => return reply.error(libc::ENOENT),
-            };
-
-            if let Ok(target) = self.fs.get_link_target(path, parent_dir_id) {
-                return reply.data(target.as_bytes());
+            if let Ok(target) = self.fs.link_target(path) {
+                return reply.data(target.as_os_str().as_bytes());
             }
         }
 
@@ -172,13 +166,12 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
-            let parent_dir_id = match path.parent() {
-                Some(parent) => self.fs.get_dir_id(parent).unwrap(),
-                None => return reply.error(libc::ENOENT),
-            };
+            if path.parent().is_none() {
+                return reply.error(libc::EINVAL);
+            }
 
             // TODO: Maybe check flags and modify open options
-            if let Ok(stream) = self.fs.open_file(path, parent_dir_id) {
+            if let Ok(stream) = self.fs.open_file(path) {
                 let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
                 self.file_handles.insert(fh, stream);
                 return reply.opened(fh, flags as u32);
@@ -240,7 +233,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyOpen,
     ) {
         if let Some(path) = self.inodes_to_paths.get(&ino) {
-            if let Ok(entries) = self.fs.get_virtual_dir_entries(path) {
+            if let Ok(entries) = self.fs.dir_entries(path) {
                 self.dir_entries.insert(ino, entries);
                 // TODO: Do we need to allocate a file handle?
                 return reply.opened(0, flags as u32);

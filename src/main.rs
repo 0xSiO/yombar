@@ -17,7 +17,7 @@ pub fn main() {
         FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
         "example",
         &[
-            MountOption::RO,
+            // MountOption::RO,
             MountOption::FSName(String::from("example-fs")),
         ],
     )

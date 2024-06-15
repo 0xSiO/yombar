@@ -21,7 +21,7 @@ impl<'v> Translator<'v> {
 
     /// Translates a cleartext name to its full, unshortened ciphertext name, including .c9r
     /// extension.
-    fn get_full_ciphertext_name(
+    pub fn get_full_ciphertext_name(
         &self,
         cleartext_name: impl AsRef<OsStr>,
         dir_id: impl AsRef<str>,

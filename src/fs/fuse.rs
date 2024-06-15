@@ -285,4 +285,32 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             None => reply.error(libc::ENOENT),
         }
     }
+
+    fn rename(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        newparent: u64,
+        newname: &std::ffi::OsStr,
+        _flags: u32,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(old_parent) = self.inodes_to_paths.get(&parent) {
+            if let Some(new_parent) = self.inodes_to_paths.get(&newparent) {
+                if self
+                    .fs
+                    .rename(old_parent, name, new_parent, newname)
+                    .is_ok()
+                {
+                    // TODO: Update inode/path caches
+                    return reply.ok();
+                } else {
+                    return reply.error(libc::EIO);
+                }
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
 }

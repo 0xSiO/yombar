@@ -150,6 +150,26 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    // TODO: Use mode, umask
+    fn mkdir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        _mode: u32,
+        _umask: u32,
+        reply: fuser::ReplyEntry,
+    ) {
+        if let Some(parent) = self.tree.get_path(parent) {
+            if let Ok(entry) = self.fs.mkdir(&parent, name) {
+                let inode = self.tree.insert_path(parent.join(name));
+                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {

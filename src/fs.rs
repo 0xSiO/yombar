@@ -12,6 +12,7 @@ pub mod fuse;
 mod translator;
 
 use translator::Translator;
+use uuid::Uuid;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum FileKind {
@@ -344,5 +345,35 @@ impl<'v> EncryptedFileSystem<'v> {
             FileKind::Directory => self.rename_dir(old_parent, old_name, new_parent, new_name),
             FileKind::Symlink => self.rename_link(old_parent, old_name, new_parent, new_name),
         }
+    }
+
+    fn mkdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<DirEntry> {
+        let parent_dir_id = self.translator.get_dir_id(&parent)?;
+        let ciphertext_path = self
+            .translator
+            .get_ciphertext_path(parent.as_ref().join(name), &parent_dir_id)?;
+
+        fs::create_dir_all(&ciphertext_path)?;
+        let dir_id = Uuid::new_v4().to_string();
+        fs::write(ciphertext_path.join("dir.c9r"), &dir_id)?;
+
+        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+            let full_name = self
+                .translator
+                .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
+            fs::write(ciphertext_path.join("name.c9s"), full_name)?;
+        }
+
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+        let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
+        fs::create_dir_all(&hashed_dir_path)?;
+        // TODO: Write encrypted dirid.c9r under hashed dir path
+
+        let meta = hashed_dir_path.metadata()?;
+        Ok(DirEntry {
+            kind: FileKind::Directory,
+            size: meta.len(),
+            metadata: meta,
+        })
     }
 }

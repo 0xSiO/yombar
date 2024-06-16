@@ -18,6 +18,10 @@ use crate::{
     io::{try_read_exact, EncryptedStream},
 };
 
+mod dir_tree;
+
+use dir_tree::DirTree;
+
 const TTL: Duration = Duration::from_secs(1);
 
 type Inode = u64;
@@ -64,11 +68,9 @@ impl From<Attributes> for FileAttr {
 
 pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
-    inodes_to_paths: HashMap<Inode, PathBuf>,
-    paths_to_inodes: HashMap<PathBuf, Inode>,
+    tree: DirTree,
     dir_entries: HashMap<Inode, BTreeMap<PathBuf, DirEntry>>,
     file_handles: HashMap<u64, EncryptedStream<'v, File>>,
-    next_inode: AtomicU64,
     next_file_handle: AtomicU64,
 }
 
@@ -76,26 +78,21 @@ impl<'v> FuseFileSystem<'v> {
     pub fn new(fs: EncryptedFileSystem<'v>) -> Self {
         Self {
             fs,
-            inodes_to_paths: Default::default(),
-            paths_to_inodes: Default::default(),
+            tree: DirTree::new(),
             dir_entries: Default::default(),
             file_handles: Default::default(),
-            next_inode: AtomicU64::new(FUSE_ROOT_ID),
             next_file_handle: AtomicU64::new(0),
         }
     }
 }
 
+// TODO: Look into removing cached tree entries that are no longer valid where possible
 impl<'v> Filesystem for FuseFileSystem<'v> {
     fn init(
         &mut self,
         _req: &fuser::Request<'_>,
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
-        let root_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-        self.inodes_to_paths.insert(root_inode, PathBuf::new());
-        self.paths_to_inodes.insert(PathBuf::new(), root_inode);
-
         Ok(())
     }
 
@@ -106,16 +103,11 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
-        if let Some(parent_path) = self.inodes_to_paths.get(&parent) {
+        if let Some(parent_path) = self.tree.get_path(parent) {
             let target_path = parent_path.join(name);
 
             if let Ok(entry) = self.fs.dir_entry(&target_path) {
-                let inode = *self
-                    .paths_to_inodes
-                    .entry(target_path.clone())
-                    .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
-                self.inodes_to_paths.insert(inode, target_path);
-
+                let inode = self.tree.insert_path(target_path);
                 return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
             }
         }
@@ -124,7 +116,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
+        if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {
                 let metadata = self.fs.root_dir().metadata().unwrap();
                 return reply.attr(
@@ -145,17 +137,11 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             }
         }
 
-        // Remove any cached data if not found
-        // TODO: Do this in other methods too where needed
-        self.inodes_to_paths
-            .remove(&ino)
-            .map(|path| self.paths_to_inodes.remove(&path));
-
         reply.error(libc::ENOENT);
     }
 
     fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
+        if let Some(path) = self.tree.get_path(ino) {
             if let Ok(target) = self.fs.link_target(path) {
                 return reply.data(target.as_os_str().as_bytes());
             }
@@ -165,7 +151,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
+        if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {
                 return reply.error(libc::EINVAL);
             }
@@ -232,7 +218,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         flags: i32,
         reply: fuser::ReplyOpen,
     ) {
-        if let Some(path) = self.inodes_to_paths.get(&ino) {
+        if let Some(path) = self.tree.get_path(ino) {
             if let Ok(entries) = self.fs.dir_entries(path) {
                 self.dir_entries.insert(ino, entries);
                 // TODO: Do we need to allocate a file handle?
@@ -254,11 +240,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         if let Some(entries) = self.dir_entries.get(&ino) {
             for (i, (path, dir_entry)) in entries.iter().enumerate().skip(offset as usize) {
                 let name = path.file_name().unwrap().to_os_string();
-                let inode = *self
-                    .paths_to_inodes
-                    .entry(path.clone())
-                    .or_insert_with(|| self.next_inode.fetch_add(1, Ordering::SeqCst));
-                self.inodes_to_paths.insert(inode, path.clone());
+                let inode = self.tree.insert_path(path);
 
                 // i + 1 means the index of the next entry
                 if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
@@ -296,14 +278,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _flags: u32,
         reply: fuser::ReplyEmpty,
     ) {
-        if let Some(old_parent) = self.inodes_to_paths.get(&parent) {
-            if let Some(new_parent) = self.inodes_to_paths.get(&newparent) {
+        if let Some(old_parent) = self.tree.get_path(parent) {
+            if let Some(new_parent) = self.tree.get_path(newparent) {
                 if self
                     .fs
                     .rename(old_parent, name, new_parent, newname)
                     .is_ok()
                 {
-                    // TODO: Update inode/path caches
+                    self.tree.rename(parent, name, newparent, newname);
                     return reply.ok();
                 } else {
                     return reply.error(libc::EIO);

@@ -149,8 +149,7 @@ impl<'v> EncryptedFileSystem<'v> {
         if ciphertext_path.is_file() {
             let mut decrypted = String::new();
             let file = File::open(ciphertext_path)?;
-            EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)?
-                .read_to_string(&mut decrypted)?;
+            EncryptedStream::open(self.vault.cryptor(), file)?.read_to_string(&mut decrypted)?;
 
             return Ok(decrypted.into());
         }
@@ -170,7 +169,7 @@ impl<'v> EncryptedFileSystem<'v> {
             File::open(ciphertext_path)?
         };
 
-        EncryptedStream::open(self.vault.cryptor(), file.metadata()?.len(), file)
+        EncryptedStream::open(self.vault.cryptor(), file)
     }
 
     fn rename_file(

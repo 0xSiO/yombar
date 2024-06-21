@@ -29,7 +29,7 @@ pub fn try_read_exact<R: Read + ?Sized>(
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub struct EncryptedStream<'k, I: Read + Seek> {
+pub struct EncryptedStream<'k, I> {
     inner: I,
     cleartext_size: u64,
     cryptor: Cryptor<'k>,
@@ -37,17 +37,34 @@ pub struct EncryptedStream<'k, I: Read + Seek> {
     chunk_buffer: VecDeque<u8>,
 }
 
-impl<'k, I: Read + Seek> EncryptedStream<'k, I> {
-    pub fn open(cryptor: Cryptor<'k>, ciphertext_size: u64, mut inner: I) -> io::Result<Self> {
+impl<'k, I: Read + Seek + Write> EncryptedStream<'k, I> {
+    pub fn open(cryptor: Cryptor<'k>, mut inner: I) -> io::Result<Self> {
         let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
-        inner.read_exact(&mut encrypted_header)?;
-        let file_header = cryptor
-            .decrypt_header(encrypted_header)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        inner.rewind()?;
+        let file_header = match inner.read_exact(&mut encrypted_header) {
+            // Decrypt the file header if it exists
+            Ok(()) => cryptor
+                .decrypt_header(encrypted_header)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+            // Otherwise, write a new one
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
+                let header = cryptor.new_header()?;
+                let header_bytes = cryptor.encrypt_header(&header).map_err(io::Error::other)?;
+                inner.rewind()?;
+                inner.write_all(&header_bytes)?;
+                header
+            }
+            Err(err) => return Err(err),
+        };
+
+        // Grab the length of the stream, then skip back to the end of the header
+        inner.seek(SeekFrom::End(0))?;
+        let cleartext_size = util::get_cleartext_size(cryptor, inner.stream_position()?);
+        inner.seek(SeekFrom::Start(cryptor.encrypted_header_len() as u64))?;
 
         Ok(Self {
             inner,
-            cleartext_size: util::get_cleartext_size(cryptor, ciphertext_size),
+            cleartext_size,
             cryptor,
             file_header,
             chunk_buffer: Default::default(),

@@ -165,7 +165,7 @@ pub fn siv_ctrmac_basic() {
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
     )
     .unwrap();
-    let mut stream = EncryptedStream::open(cryptor, file.metadata().unwrap().len(), file).unwrap();
+    let mut stream = EncryptedStream::open(cryptor, file).unwrap();
 
     let mut decrypted = String::new();
     stream.read_to_string(&mut decrypted).unwrap();
@@ -176,7 +176,7 @@ pub fn siv_ctrmac_basic() {
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
     )
     .unwrap();
-    let mut stream = EncryptedStream::open(cryptor, file.metadata().unwrap().len(), file).unwrap();
+    let mut stream = EncryptedStream::open(cryptor, file).unwrap();
 
     let mut decrypted = Vec::new();
     stream.read_to_end(&mut decrypted).unwrap();
@@ -202,7 +202,7 @@ pub fn siv_ctrmac_basic() {
     assert_eq!(buffer.len(), ciphertext.len());
 
     let cursor = Cursor::new(buffer);
-    let mut stream = EncryptedStream::open(cryptor, cursor.get_ref().len() as u64, cursor).unwrap();
+    let mut stream = EncryptedStream::open(cryptor, cursor).unwrap();
     let mut decrypted = String::new();
     stream.read_to_string(&mut decrypted).unwrap();
     assert_eq!(decrypted, "this is a test file with some text in it\n");
@@ -223,7 +223,7 @@ pub fn siv_ctrmac_basic() {
     assert_eq!(buffer.len(), ciphertext.len());
 
     let cursor = Cursor::new(buffer);
-    let mut stream = EncryptedStream::open(cryptor, cursor.get_ref().len() as u64, cursor).unwrap();
+    let mut stream = EncryptedStream::open(cryptor, cursor).unwrap();
     let mut decrypted = Vec::new();
     stream.read_to_end(&mut decrypted).unwrap();
     assert_eq!(decrypted, image_data);

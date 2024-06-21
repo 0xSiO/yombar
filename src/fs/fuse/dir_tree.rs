@@ -11,7 +11,6 @@ use super::Inode;
 
 #[derive(Debug, Default)]
 struct Node {
-    inode: Inode,
     name: OsString,
     parent: Option<Inode>,
     children: BTreeMap<OsString, Inode>,
@@ -20,28 +19,25 @@ struct Node {
 // TODO: Look into inode reuse if desired
 #[derive(Debug)]
 pub struct DirTree {
-    nodes: Vec<Node>,
+    nodes: BTreeMap<Inode, Node>,
     next_inode: AtomicU64,
 }
 
 impl DirTree {
     pub fn new() -> Self {
-        let root = Node {
-            inode: FUSE_ROOT_ID,
-            ..Default::default()
-        };
+        let mut nodes = BTreeMap::new();
+        nodes.insert(FUSE_ROOT_ID, Default::default());
 
         Self {
-            nodes: vec![root],
+            nodes,
             next_inode: AtomicU64::new(FUSE_ROOT_ID + 1),
         }
     }
 
     pub fn get_path(&self, inode: Inode) -> Option<PathBuf> {
-        match self.nodes.get(inode as usize - 1) {
+        match self.nodes.get(&inode) {
             Some(node) => match node.parent {
-                // Ok to unwrap, I think - items should never be removed from self.nodes, so parent
-                // indexes should always correspond to the same values.
+                // TODO: Is this okay to unwrap?
                 Some(p) => Some(self.get_path(p).unwrap().join(&node.name)),
                 None => Some(PathBuf::new()),
             },
@@ -54,21 +50,20 @@ impl DirTree {
         for component in path.as_ref().components() {
             let name: &OsStr = component.as_ref();
 
-            // Ok to index into self.nodes, inodes that we track should always stay valid
-            let node = &mut self.nodes[inode as usize - 1];
+            // Should be okay to unwrap, we control what inodes are searched
+            let node = self.nodes.get_mut(&inode).unwrap();
             match node.children.get(name) {
                 Some(&child) => inode = child,
                 None => {
                     let child = Node {
-                        inode: self.next_inode.fetch_add(1, Ordering::SeqCst),
                         parent: Some(inode),
                         name: name.to_owned(),
                         children: BTreeMap::new(),
                     };
 
-                    node.children.insert(name.to_owned(), child.inode);
-                    inode = child.inode;
-                    self.nodes.push(child);
+                    inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+                    node.children.insert(name.to_owned(), inode);
+                    self.nodes.insert(inode, child);
                 }
             }
         }
@@ -85,7 +80,7 @@ impl DirTree {
     ) {
         let inode = match self
             .nodes
-            .get_mut(old_parent as usize - 1)
+            .get_mut(&old_parent)
             .and_then(|p| p.children.remove(old_name.as_ref()))
         {
             Some(inode) => inode,
@@ -93,21 +88,20 @@ impl DirTree {
         };
 
         let new_name = new_name.as_ref().to_os_string();
-        if let Some(node) = self.nodes.get_mut(inode as usize - 1) {
+        if let Some(node) = self.nodes.get_mut(&inode) {
             node.name.clone_from(&new_name);
             node.parent = Some(new_parent);
         }
 
-        if let Some(new_parent_node) = self.nodes.get_mut(new_parent as usize - 1) {
+        if let Some(new_parent_node) = self.nodes.get_mut(&new_parent) {
             new_parent_node.children.insert(new_name, inode);
         }
     }
 
     pub fn remove(&mut self, parent: Inode, name: impl AsRef<OsStr>) {
-        if let Some(node) = self.nodes.get_mut(parent as usize - 1) {
-            // Disconnect both the parent and child
+        if let Some(node) = self.nodes.get_mut(&parent) {
             if let Some(inode) = node.children.remove(name.as_ref()) {
-                self.nodes[inode as usize - 1].parent = None;
+                self.nodes.remove(&inode);
             }
         }
     }

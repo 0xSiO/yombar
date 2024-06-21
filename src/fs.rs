@@ -350,6 +350,46 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
+    fn mknod(
+        &self,
+        parent: impl AsRef<Path>,
+        name: &OsStr,
+        permissions: Permissions,
+    ) -> io::Result<DirEntry> {
+        let parent_dir_id = self.translator.get_dir_id(&parent)?;
+        let ciphertext_path = self
+            .translator
+            .get_ciphertext_path(parent.as_ref().join(name), &parent_dir_id)?;
+
+        let ciphertext_file = if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+            fs::create_dir_all(&ciphertext_path)?;
+            let full_name = self
+                .translator
+                .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
+            fs::write(ciphertext_path.join("name.c9s"), full_name)?;
+            File::create_new(ciphertext_path.join("contents.c9r"))?
+        } else {
+            File::create_new(ciphertext_path)?
+        };
+
+        let mut stream = EncryptStream::new(
+            self.vault.cryptor(),
+            self.vault.cryptor().new_header()?,
+            &ciphertext_file,
+        );
+        // TODO: Not sure about this
+        stream.write_all(b"")?;
+        stream.flush()?;
+        ciphertext_file.set_permissions(permissions)?;
+
+        let meta = ciphertext_file.metadata()?;
+        Ok(DirEntry {
+            kind: FileKind::File,
+            size: 0,
+            metadata: meta,
+        })
+    }
+
     fn mkdir(
         &self,
         parent: impl AsRef<Path>,

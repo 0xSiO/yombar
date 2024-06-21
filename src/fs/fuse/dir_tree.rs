@@ -102,4 +102,13 @@ impl DirTree {
             new_parent_node.children.insert(new_name, inode);
         }
     }
+
+    pub fn remove(&mut self, parent: Inode, name: impl AsRef<OsStr>) {
+        if let Some(node) = self.nodes.get_mut(parent as usize - 1) {
+            // Disconnect both the parent and child
+            if let Some(inode) = node.children.remove(name.as_ref()) {
+                self.nodes[inode as usize - 1].parent = None;
+            }
+        }
+    }
 }

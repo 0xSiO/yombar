@@ -424,4 +424,17 @@ impl<'v> EncryptedFileSystem<'v> {
             metadata: meta,
         })
     }
+
+    fn unlink(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<()> {
+        let parent_dir_id = self.translator.get_dir_id(&parent)?;
+        let ciphertext_path = self
+            .translator
+            .get_ciphertext_path(parent.as_ref().join(name), parent_dir_id)?;
+
+        if ciphertext_path.is_file() {
+            fs::remove_file(ciphertext_path)
+        } else {
+            fs::remove_dir_all(&ciphertext_path)
+        }
+    }
 }

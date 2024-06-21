@@ -170,6 +170,23 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    fn unlink(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(parent_path) = self.tree.get_path(parent) {
+            if let Ok(()) = self.fs.unlink(parent_path, name) {
+                self.tree.remove(parent, name);
+                return reply.ok();
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn symlink(
         &mut self,
         _req: &fuser::Request<'_>,

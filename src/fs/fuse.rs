@@ -187,6 +187,29 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    fn rmdir(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(parent_path) = self.tree.get_path(parent) {
+            if let Ok(entries) = self.fs.dir_entries(parent_path.join(name)) {
+                if !entries.is_empty() {
+                    return reply.error(libc::ENOTEMPTY);
+                }
+
+                if let Ok(()) = self.fs.rmdir(parent_path, name) {
+                    self.tree.remove(parent, name);
+                    return reply.ok();
+                }
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn symlink(
         &mut self,
         _req: &fuser::Request<'_>,

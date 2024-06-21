@@ -437,4 +437,16 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::remove_dir_all(&ciphertext_path)
         }
     }
+
+    fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<()> {
+        let dir_id = self.translator.get_dir_id(parent.as_ref().join(name))?;
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+        fs::remove_dir_all(self.vault.path().join("d").join(hashed_dir_id))?;
+
+        let parent_dir_id = self.translator.get_dir_id(&parent)?;
+        let ciphertext_path = self
+            .translator
+            .get_ciphertext_path(parent.as_ref().join(name), parent_dir_id)?;
+        fs::remove_dir_all(ciphertext_path)
+    }
 }

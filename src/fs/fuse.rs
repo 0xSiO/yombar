@@ -170,6 +170,24 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    fn symlink(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        link_name: &std::ffi::OsStr,
+        target: &std::path::Path,
+        reply: fuser::ReplyEntry,
+    ) {
+        if let Some(parent) = self.tree.get_path(parent) {
+            if let Ok(entry) = self.fs.symlink(&parent, link_name, target) {
+                let inode = self.tree.insert_path(parent.join(link_name));
+                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {

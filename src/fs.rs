@@ -2,11 +2,15 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fs::{self, File, Metadata, Permissions},
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, io::EncryptedStream, util, Vault};
+use crate::{
+    crypto::FileCryptor,
+    io::{EncryptStream, EncryptedStream},
+    util, Vault,
+};
 
 pub mod fuse;
 mod translator;
@@ -379,6 +383,45 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(DirEntry {
             kind: FileKind::Directory,
             size: meta.len(),
+            metadata: meta,
+        })
+    }
+
+    fn symlink(
+        &self,
+        parent: impl AsRef<Path>,
+        link_name: &OsStr,
+        target: impl AsRef<Path>,
+    ) -> io::Result<DirEntry> {
+        let parent_dir_id = self.translator.get_dir_id(&parent)?;
+        let ciphertext_path = self
+            .translator
+            .get_ciphertext_path(parent.as_ref().join(link_name), &parent_dir_id)?;
+
+        fs::create_dir_all(&ciphertext_path)?;
+
+        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+            let full_name = self
+                .translator
+                .get_full_ciphertext_name(parent.as_ref().join(link_name), parent_dir_id)?;
+            fs::write(ciphertext_path.join("name.c9s"), full_name)?;
+        }
+
+        let symlink = File::create(ciphertext_path.join("symlink.c9r"))?;
+        let mut stream = EncryptStream::new(
+            self.vault.cryptor(),
+            self.vault.cryptor().new_header()?,
+            symlink,
+        );
+        stream.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
+        stream.flush()?;
+
+        let meta = ciphertext_path.join("symlink.c9r").metadata()?;
+        let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+
+        Ok(DirEntry {
+            kind: FileKind::Symlink,
+            size,
             metadata: meta,
         })
     }

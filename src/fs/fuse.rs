@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::File,
+    fs::{File, Permissions},
     io::{Seek, SeekFrom},
     os::unix::{
         ffi::OsStrExt,
@@ -150,18 +150,18 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
-    // TODO: Use mode, umask
     fn mkdir(
         &mut self,
         _req: &fuser::Request<'_>,
         parent: u64,
         name: &std::ffi::OsStr,
-        _mode: u32,
+        mode: u32,
+        // TODO: Use umask?
         _umask: u32,
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            if let Ok(entry) = self.fs.mkdir(&parent, name) {
+            if let Ok(entry) = self.fs.mkdir(&parent, name, Permissions::from_mode(mode)) {
                 let inode = self.tree.insert_path(parent.join(name));
                 return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
             }

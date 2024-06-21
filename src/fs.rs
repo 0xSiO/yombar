@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fs::{self, File, Metadata},
+    fs::{self, File, Metadata, Permissions},
     io::{self, Read},
     path::{Path, PathBuf},
 };
@@ -347,7 +347,12 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    fn mkdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<DirEntry> {
+    fn mkdir(
+        &self,
+        parent: impl AsRef<Path>,
+        name: &OsStr,
+        permissions: Permissions,
+    ) -> io::Result<DirEntry> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let ciphertext_path = self
             .translator
@@ -367,6 +372,7 @@ impl<'v> EncryptedFileSystem<'v> {
         let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
         fs::create_dir_all(&hashed_dir_path)?;
+        fs::set_permissions(&hashed_dir_path, permissions)?;
         // TODO: Write encrypted dirid.c9r under hashed dir path
 
         let meta = hashed_dir_path.metadata()?;

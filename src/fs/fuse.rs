@@ -228,6 +228,34 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
+    fn rename(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        newparent: u64,
+        newname: &std::ffi::OsStr,
+        _flags: u32,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(old_parent) = self.tree.get_path(parent) {
+            if let Some(new_parent) = self.tree.get_path(newparent) {
+                if self
+                    .fs
+                    .rename(old_parent, name, new_parent, newname)
+                    .is_ok()
+                {
+                    self.tree.rename(parent, name, newparent, newname);
+                    return reply.ok();
+                } else {
+                    return reply.error(libc::EIO);
+                }
+            }
+        }
+
+        reply.error(libc::ENOENT);
+    }
+
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {
@@ -344,33 +372,5 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             Some(_) => reply.ok(),
             None => reply.error(libc::ENOENT),
         }
-    }
-
-    fn rename(
-        &mut self,
-        _req: &fuser::Request<'_>,
-        parent: u64,
-        name: &std::ffi::OsStr,
-        newparent: u64,
-        newname: &std::ffi::OsStr,
-        _flags: u32,
-        reply: fuser::ReplyEmpty,
-    ) {
-        if let Some(old_parent) = self.tree.get_path(parent) {
-            if let Some(new_parent) = self.tree.get_path(newparent) {
-                if self
-                    .fs
-                    .rename(old_parent, name, new_parent, newname)
-                    .is_ok()
-                {
-                    self.tree.rename(parent, name, newparent, newname);
-                    return reply.ok();
-                } else {
-                    return reply.error(libc::EIO);
-                }
-            }
-        }
-
-        reply.error(libc::ENOENT);
     }
 }

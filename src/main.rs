@@ -1,17 +1,27 @@
 use cryptomator::{
     fs::{fuse::FuseFileSystem, EncryptedFileSystem},
-    Vault,
+    Result, Vault,
 };
 use fuser::MountOption;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub fn main() {
-    let _ = pretty_env_logger::try_init();
+pub fn main() -> Result<()> {
+    color_eyre::install()?;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .pretty()
+                .without_time()
+                .with_file(false),
+        )
+        .with(tracing_error::ErrorLayer::default())
+        .init();
 
     let vault = Vault::open(
         "tests/fixtures/vault_v8_siv_ctrmac/vault.cryptomator",
         String::from("password"),
-    )
-    .unwrap();
+    )?;
 
     fuser::mount2(
         FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
@@ -20,6 +30,7 @@ pub fn main() {
             // MountOption::RO,
             MountOption::FSName(String::from("example-fs")),
         ],
-    )
-    .unwrap();
+    )?;
+
+    Ok(())
 }

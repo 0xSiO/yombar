@@ -15,13 +15,12 @@ aes-siv = { version = "0.7.0", features = ["std"] }
 anyhow = "1.0.0"
 base32ct = { version = "0.2.0", features = ["std"] }
 base64ct = { version = "1.6.0", features = ["std"] }
+color-eyre = { version = "0.6.0" }
 ctr = { version = "0.9.0", features = ["std"] }
 fuser = { version = "0.14.0" }
 hmac = "0.12.0"
 jsonwebtoken = { version = "9.3.0", default-features = false }
 libc = "0.2.0"
-log = "0.4.0"
-pretty_env_logger = "0.5.0"
 rand_core = { version = "*", features = ["std"] }
 scrypt = "0.11.0"
 serde = { version = "1.0.0", features = ["derive"] }
@@ -29,5 +28,8 @@ serde_json = "1.0.0"
 sha1 = "0.10.0"
 sha2 = "0.10.0"
 thiserror = "1.0.0"
+tracing = { version = "0.1.0" }
+tracing-error = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
 zeroize = { version = "1.7.0", features = ["std", "zeroize_derive"] }

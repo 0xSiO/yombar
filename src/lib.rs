@@ -9,3 +9,5 @@ pub use self::{
     key::{MasterKey, WrappedKey},
     vault::{CipherCombo, Vault, VaultConfig},
 };
+
+pub type Result<T> = color_eyre::Result<T>;

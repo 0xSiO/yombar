@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fmt::Debug, fs, path::Path};
 
 use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
@@ -14,7 +14,7 @@ use crate::{error::*, util};
 
 pub const SUBKEY_LEN: usize = 32;
 
-#[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; SUBKEY_LEN * 2]);
 
 impl MasterKey {
@@ -75,6 +75,12 @@ impl MasterKey {
         key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LEN])?;
         key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LEN..])?;
         Ok(MasterKey(buffer))
+    }
+}
+
+impl Debug for MasterKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MasterKey")
     }
 }
 

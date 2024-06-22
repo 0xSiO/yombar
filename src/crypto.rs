@@ -84,7 +84,7 @@ pub trait FileCryptor {
     ) -> Result<String, CryptorError>;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Cryptor<'k> {
     SivCtrMac(siv_ctrmac::Cryptor<'k>),
     SivGcm(siv_gcm::Cryptor<'k>),

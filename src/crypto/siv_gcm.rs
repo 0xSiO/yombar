@@ -24,7 +24,7 @@ const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + TAG_LEN;
 const MAX_CHUNK_LEN: usize = 32 * 1024;
 const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + TAG_LEN;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Cryptor<'k> {
     key: &'k MasterKey,
 }

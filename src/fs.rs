@@ -1,18 +1,20 @@
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
+    fmt::Debug,
     fs::{self, Metadata, Permissions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, util, Vault};
+use crate::{crypto::FileCryptor, util, Result, Vault};
 
 mod encrypted_file;
 pub mod fuse;
 mod translator;
 
 pub use encrypted_file::EncryptedFile;
+use tracing::instrument;
 use translator::Translator;
 use uuid::Uuid;
 
@@ -137,7 +139,8 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    fn link_target(&self, cleartext_path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    #[instrument(skip(self))]
+    fn link_target(&self, cleartext_path: impl AsRef<Path> + Debug) -> Result<PathBuf> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let ciphertext_path = self
             .translator
@@ -152,10 +155,10 @@ impl<'v> EncryptedFileSystem<'v> {
             return Ok(decrypted.into());
         }
 
-        Err(io::Error::new(io::ErrorKind::InvalidData, "not a link"))
+        Err(io::Error::new(io::ErrorKind::InvalidData, "not a link").into())
     }
 
-    fn open_file(&self, cleartext_path: impl AsRef<Path>) -> io::Result<EncryptedFile<'v>> {
+    fn open_file(&self, cleartext_path: impl AsRef<Path>) -> Result<EncryptedFile<'v>> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let mut ciphertext_path = self
             .translator
@@ -346,12 +349,13 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
+    #[instrument(skip(self))]
     fn mknod(
         &self,
-        parent: impl AsRef<Path>,
+        parent: impl AsRef<Path> + Debug,
         name: &OsStr,
         permissions: Permissions,
-    ) -> io::Result<DirEntry> {
+    ) -> Result<DirEntry> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let mut ciphertext_path = self
             .translator
@@ -417,7 +421,7 @@ impl<'v> EncryptedFileSystem<'v> {
         parent: impl AsRef<Path>,
         link_name: &OsStr,
         target: impl AsRef<Path>,
-    ) -> io::Result<DirEntry> {
+    ) -> Result<DirEntry> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let ciphertext_path = self
             .translator

@@ -1,15 +1,18 @@
 use std::{
     cmp::Ordering,
     collections::VecDeque,
+    fmt::Debug,
     fs::File,
     io::{self, Read, Seek, SeekFrom, Write},
     ops::Deref,
     path::Path,
 };
 
+use tracing::instrument;
+
 use crate::{
     crypto::{Cryptor, FileCryptor, FileHeader},
-    util,
+    util, Result,
 };
 
 pub struct EncryptedFile<'k> {
@@ -21,7 +24,8 @@ pub struct EncryptedFile<'k> {
 
 impl<'k> EncryptedFile<'k> {
     /// Open an existing encrypted file in read-write mode.
-    pub fn open(cryptor: Cryptor<'k>, path: impl AsRef<Path>) -> io::Result<Self> {
+    #[instrument]
+    pub fn open(cryptor: Cryptor<'k>, path: impl AsRef<Path> + Debug) -> Result<Self> {
         let mut file = File::options().read(true).write(true).open(path)?;
         let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
         let header = match file.read_exact(&mut encrypted_header) {
@@ -37,7 +41,7 @@ impl<'k> EncryptedFile<'k> {
                 file.flush()?;
                 header
             }
-            Err(err) => return Err(err),
+            Err(err) => return Err(err.into()),
         };
 
         Ok(Self {
@@ -49,7 +53,8 @@ impl<'k> EncryptedFile<'k> {
     }
 
     /// Create a new encrypted file in read-write mode; error if the file exists.
-    pub fn create_new(cryptor: Cryptor<'k>, path: impl AsRef<Path>) -> io::Result<Self> {
+    #[instrument]
+    pub fn create_new(cryptor: Cryptor<'k>, path: impl AsRef<Path> + Debug) -> Result<Self> {
         File::create_new(&path)?;
         Self::open(cryptor, path)
     }

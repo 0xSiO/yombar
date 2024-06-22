@@ -3,14 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use color_eyre::eyre::{bail, OptionExt};
 use jsonwebtoken::{TokenData, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     crypto::{siv_ctrmac, siv_gcm, Cryptor},
-    error::*,
-    util, MasterKey, WrappedKey,
+    util, MasterKey, Result, WrappedKey,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,10 +54,10 @@ impl Vault {
     // 2. Load the wrapped master key and grab the scrypt parameters
     // 3. Derive a KEK with the password and scrypt parameters
     // 4. Use the KEK to unwrap the master key and decode/verify the config JWT
-    pub fn open(config_path: impl AsRef<Path>, password: String) -> Result<Self, VaultUnlockError> {
+    pub fn open(config_path: impl AsRef<Path>, password: String) -> Result<Self> {
         let jwt = fs::read_to_string(&config_path)?;
         let header = jsonwebtoken::decode_header(&jwt)?;
-        let master_key_uri = header.kid.ok_or(VaultUnlockError::JwtMissingKeyId)?;
+        let master_key_uri = header.kid.ok_or_eyre("JWT header is missing `kid` claim")?;
 
         if master_key_uri.starts_with("masterkeyfile:") {
             // TODO: Handle case with no parent?
@@ -76,7 +76,7 @@ impl Vault {
             // TODO: Only version 8 is supported for now
             match config.claims.format {
                 8 => {}
-                other => return Err(VaultUnlockError::UnsupportedVaultFormat(other)),
+                other => bail!("unsupported vault format: {other}"),
             }
 
             Ok(Self {
@@ -85,7 +85,7 @@ impl Vault {
                 master_key,
             })
         } else {
-            Err(VaultUnlockError::UnsupportedKeyUri(master_key_uri))
+            bail!("unsupported key URI format: {master_key_uri}");
         }
     }
 

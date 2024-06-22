@@ -30,18 +30,16 @@ impl<'k> EncryptedFile<'k> {
         let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
         let header = match file.read_exact(&mut encrypted_header) {
             // Decrypt the file header if it exists
-            Ok(_) => cryptor
-                .decrypt_header(encrypted_header)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+            Ok(_) => cryptor.decrypt_header(encrypted_header)?,
             // Otherwise, write a new one
             Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
                 let header = cryptor.new_header()?;
-                let header_bytes = cryptor.encrypt_header(&header).map_err(io::Error::other)?;
+                let header_bytes = cryptor.encrypt_header(&header)?;
                 file.write_all(&header_bytes)?;
                 file.flush()?;
                 header
             }
-            Err(err) => return Err(err.into()),
+            Err(err) => Err(err)?,
         };
 
         Ok(Self {

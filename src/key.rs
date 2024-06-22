@@ -10,7 +10,7 @@ use scrypt::{
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::*, util};
+use crate::{util, Result};
 
 pub const SUBKEY_LEN: usize = 32;
 
@@ -18,7 +18,7 @@ pub const SUBKEY_LEN: usize = 32;
 pub struct MasterKey([u8; SUBKEY_LEN * 2]);
 
 impl MasterKey {
-    pub fn new() -> Result<Self, rand_core::Error> {
+    pub fn new() -> Result<Self> {
         let mut key = Self([0_u8; SUBKEY_LEN * 2]);
         OsRng.try_fill_bytes(&mut key.0)?;
         Ok(key)
@@ -51,7 +51,7 @@ impl MasterKey {
         scrypt_params: Params,
         scrypt_salt: SaltString,
         format_version: u32,
-    ) -> Result<WrappedKey, aes_kw::Error> {
+    ) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; SUBKEY_LEN + 8];
         let mut wrapped_mac_master_key = [0_u8; SUBKEY_LEN + 8];
 
@@ -67,10 +67,7 @@ impl MasterKey {
         })
     }
 
-    pub fn from_wrapped(
-        wrapped_key: &WrappedKey,
-        key_encryption_key: &KekAes256,
-    ) -> Result<Self, aes_kw::Error> {
+    pub fn from_wrapped(wrapped_key: &WrappedKey, key_encryption_key: &KekAes256) -> Result<Self> {
         let mut buffer = [0_u8; SUBKEY_LEN * 2];
         key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LEN])?;
         key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LEN..])?;
@@ -106,7 +103,7 @@ pub struct WrappedKey {
 }
 
 impl WrappedKey {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, KeyFromFileError> {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let json = fs::read_to_string(path)?;
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
         let recommended_params = Params::recommended();

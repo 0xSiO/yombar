@@ -13,6 +13,7 @@ mod encrypted_file;
 pub mod fuse;
 mod translator;
 
+use color_eyre::eyre::bail;
 pub use encrypted_file::EncryptedFile;
 use tracing::instrument;
 use translator::Translator;
@@ -53,7 +54,7 @@ impl<'v> EncryptedFileSystem<'v> {
             .join(self.vault.cryptor().hash_dir_id("").unwrap())
     }
 
-    fn dir_entry(&self, cleartext_path: impl AsRef<Path>) -> io::Result<DirEntry> {
+    fn dir_entry(&self, cleartext_path: impl AsRef<Path>) -> Result<DirEntry> {
         // TOOD: Handle case with no parent
         let parent_dir_id = self
             .translator
@@ -107,16 +108,10 @@ impl<'v> EncryptedFileSystem<'v> {
             });
         }
 
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid file type",
-        ))
+        bail!("invalid file type");
     }
 
-    fn dir_entries(
-        &self,
-        cleartext_dir: impl AsRef<Path>,
-    ) -> io::Result<BTreeMap<PathBuf, DirEntry>> {
+    fn dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> Result<BTreeMap<PathBuf, DirEntry>> {
         let dir_id = self.translator.get_dir_id(&cleartext_dir)?;
         let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id).unwrap();
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
@@ -177,7 +172,7 @@ impl<'v> EncryptedFileSystem<'v> {
         old_name: &OsStr,
         new_parent: impl AsRef<Path>,
         new_name: &OsStr,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let old_dir_id = self.translator.get_dir_id(&old_parent)?;
         let old_ciphertext_path = self
             .translator
@@ -238,7 +233,7 @@ impl<'v> EncryptedFileSystem<'v> {
         old_name: &OsStr,
         new_parent: impl AsRef<Path>,
         new_name: &OsStr,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let old_dir_id = self.translator.get_dir_id(&old_parent)?;
         let old_ciphertext_path = self
             .translator
@@ -289,7 +284,7 @@ impl<'v> EncryptedFileSystem<'v> {
         old_name: &OsStr,
         new_parent: impl AsRef<Path>,
         new_name: &OsStr,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let old_dir_id = self.translator.get_dir_id(&old_parent)?;
         let old_ciphertext_path = self
             .translator
@@ -340,7 +335,7 @@ impl<'v> EncryptedFileSystem<'v> {
         old_name: &OsStr,
         new_parent: impl AsRef<Path>,
         new_name: &OsStr,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let old_entry = self.dir_entry(old_parent.as_ref().join(old_name))?;
         match old_entry.kind {
             FileKind::File => self.rename_file(old_parent, old_name, new_parent, new_name),
@@ -385,7 +380,7 @@ impl<'v> EncryptedFileSystem<'v> {
         parent: impl AsRef<Path>,
         name: &OsStr,
         permissions: Permissions,
-    ) -> io::Result<DirEntry> {
+    ) -> Result<DirEntry> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let ciphertext_path = self
             .translator
@@ -448,20 +443,20 @@ impl<'v> EncryptedFileSystem<'v> {
         })
     }
 
-    fn unlink(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<()> {
+    fn unlink(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let ciphertext_path = self
             .translator
             .get_ciphertext_path(parent.as_ref().join(name), parent_dir_id)?;
 
         if ciphertext_path.is_file() {
-            fs::remove_file(ciphertext_path)
+            Ok(fs::remove_file(ciphertext_path)?)
         } else {
-            fs::remove_dir_all(&ciphertext_path)
+            Ok(fs::remove_dir_all(&ciphertext_path)?)
         }
     }
 
-    fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> io::Result<()> {
+    fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
         let dir_id = self.translator.get_dir_id(parent.as_ref().join(name))?;
         let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
         fs::remove_dir_all(self.vault.path().join("d").join(hashed_dir_id))?;
@@ -470,6 +465,6 @@ impl<'v> EncryptedFileSystem<'v> {
         let ciphertext_path = self
             .translator
             .get_ciphertext_path(parent.as_ref().join(name), parent_dir_id)?;
-        fs::remove_dir_all(ciphertext_path)
+        Ok(fs::remove_dir_all(ciphertext_path)?)
     }
 }

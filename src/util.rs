@@ -13,16 +13,11 @@ use zeroize::Zeroize;
 
 use crate::{
     crypto::{Cryptor, FileCryptor},
-    error::*,
     key::SUBKEY_LEN,
-    MasterKey,
+    MasterKey, Result,
 };
 
-pub fn derive_kek(
-    mut password: String,
-    params: Params,
-    salt: Salt,
-) -> Result<KekAes256, KekDerivationError> {
+pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
     let password_hash =
         Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
 
@@ -44,24 +39,24 @@ pub fn hmac(data: &[u8], key: &MasterKey) -> Vec<u8> {
         .to_vec()
 }
 
-pub fn sign_jwt(
-    header: Header,
-    claims: impl Serialize,
-    key: &MasterKey,
-) -> Result<String, jsonwebtoken::errors::Error> {
-    jsonwebtoken::encode(&header, &claims, &EncodingKey::from_secret(key.raw_key()))
+pub fn sign_jwt(header: Header, claims: impl Serialize, key: &MasterKey) -> Result<String> {
+    Ok(jsonwebtoken::encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(key.raw_key()),
+    )?)
 }
 
 pub fn verify_jwt<T: DeserializeOwned>(
     token: String,
     validation: Validation,
     key: &MasterKey,
-) -> Result<TokenData<T>, jsonwebtoken::errors::Error> {
-    jsonwebtoken::decode(
+) -> Result<TokenData<T>> {
+    Ok(jsonwebtoken::decode(
         &token,
         &DecodingKey::from_secret(key.raw_key()),
         &validation,
-    )
+    )?)
 }
 
 /// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole

@@ -12,7 +12,6 @@ aes = { version = "0.8.0", features = ["zeroize"] }
 aes-gcm = { version = "0.10.0", features = ["zeroize"] }
 aes-kw = { version = "0.2.0", features = ["std"] }
 aes-siv = { version = "0.7.0", features = ["std"] }
-anyhow = "1.0.0"
 base32ct = { version = "0.2.0", features = ["std"] }
 base64ct = { version = "1.6.0", features = ["std"] }
 color-eyre = { version = "0.6.0" }

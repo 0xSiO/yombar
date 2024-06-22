@@ -4,10 +4,11 @@ use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Tag};
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
+use color_eyre::eyre::bail;
 use rand_core::{OsRng, RngCore};
 use sha1::{Digest, Sha1};
 
-use crate::{error::CryptorError, key::SUBKEY_LEN, MasterKey};
+use crate::{key::SUBKEY_LEN, MasterKey, Result};
 
 use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
 
@@ -40,7 +41,7 @@ impl<'k> Cryptor<'k> {
         key: &[u8; SUBKEY_LEN],
         nonce: &[u8],
         associated_data: &[u8],
-    ) -> Result<(Vec<u8>, Tag), aes_gcm::Error> {
+    ) -> Result<(Vec<u8>, Tag)> {
         use aes_gcm::KeyInit;
 
         let mut buffer = plaintext.to_vec();
@@ -60,7 +61,7 @@ impl<'k> Cryptor<'k> {
         nonce: &[u8],
         associated_data: &[u8],
         tag: &[u8],
-    ) -> Result<Vec<u8>, aes_gcm::Error> {
+    ) -> Result<Vec<u8>> {
         use aes_gcm::KeyInit;
 
         let mut buffer = ciphertext.to_vec();
@@ -74,11 +75,7 @@ impl<'k> Cryptor<'k> {
         Ok(buffer)
     }
 
-    fn aes_siv_encrypt(
-        &self,
-        plaintext: &[u8],
-        associated_data: &[&[u8]],
-    ) -> Result<Vec<u8>, aes_siv::Error> {
+    fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
@@ -88,14 +85,10 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)
+        Ok(Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)?)
     }
 
-    fn aes_siv_decrypt(
-        &self,
-        ciphertext: &[u8],
-        associated_data: &[&[u8]],
-    ) -> Result<Vec<u8>, aes_siv::Error> {
+    fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
@@ -105,7 +98,7 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)
+        Ok(Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)?)
     }
 
     fn encrypt_chunk_with_nonce(
@@ -114,7 +107,7 @@ impl<'k> Cryptor<'k> {
         chunk: &[u8],
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, aes_gcm::Error> {
+    ) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + TAG_LEN);
 
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
@@ -145,11 +138,11 @@ impl<'k> FileCryptor for Cryptor<'k> {
         MAX_ENCRYPTED_CHUNK_LEN
     }
 
-    fn new_header(&self) -> Result<FileHeader, rand_core::Error> {
+    fn new_header(&self) -> Result<FileHeader> {
         FileHeader::new(NONCE_LEN, PAYLOAD_LEN)
     }
 
-    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError> {
+    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         let (ciphertext, tag) =
             self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), &header.nonce, &[])?;
@@ -163,13 +156,10 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(buffer)
     }
 
-    fn decrypt_header(
-        &self,
-        encrypted_header: impl AsRef<[u8]>,
-    ) -> Result<FileHeader, CryptorError> {
+    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<FileHeader> {
         let encrypted_header = encrypted_header.as_ref();
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
-            return Err(CryptorError::InvalidHeaderLen(encrypted_header.len()));
+            bail!("invalid header length: {}", encrypted_header.len());
         }
 
         // Ok to start slicing, we've checked the length
@@ -188,15 +178,15 @@ impl<'k> FileCryptor for Cryptor<'k> {
         chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         let chunk = chunk.as_ref();
         if chunk.is_empty() || chunk.len() > MAX_CHUNK_LEN {
-            return Err(CryptorError::InvalidChunkLen(chunk.len()));
+            bail!("invalid cleartext chunk length: {}", chunk.len());
         }
 
         let mut nonce = [0_u8; NONCE_LEN];
         OsRng.try_fill_bytes(&mut nonce)?;
-        Ok(self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)?)
+        self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)
     }
 
     fn decrypt_chunk(
@@ -204,12 +194,12 @@ impl<'k> FileCryptor for Cryptor<'k> {
         encrypted_chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         let encrypted_chunk = encrypted_chunk.as_ref();
         if encrypted_chunk.len() <= NONCE_LEN + TAG_LEN
             || encrypted_chunk.len() > MAX_ENCRYPTED_CHUNK_LEN
         {
-            return Err(CryptorError::InvalidChunkLen(encrypted_chunk.len()));
+            bail!("invalid ciphertext chunk length: {}", encrypted_chunk.len());
         }
 
         let (nonce_and_chunk, tag) = encrypted_chunk.split_at(encrypted_chunk.len() - TAG_LEN);
@@ -221,10 +211,10 @@ impl<'k> FileCryptor for Cryptor<'k> {
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
 
-        Ok(self.aes_gcm_decrypt(chunk, &header.content_key(), &nonce, &associated_data, &tag)?)
+        self.aes_gcm_decrypt(chunk, &header.content_key(), &nonce, &associated_data, &tag)
     }
 
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<std::path::PathBuf, CryptorError> {
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_ref().as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         let base32 = Base32Upper::encode_string(&hash);
@@ -238,7 +228,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         name: impl AsRef<OsStr>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
             // TODO: Is it okay to use lossy UTF-8 conversion?
             name.as_ref().to_string_lossy().as_bytes(),
@@ -250,7 +240,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         encrypted_name: impl AsRef<str>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
             &Base64Url::decode_vec(encrypted_name.as_ref())?,

@@ -3,7 +3,7 @@ use std::{ffi::OsStr, path::PathBuf};
 use rand_core::{OsRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{error::CryptorError, key::SUBKEY_LEN};
+use crate::{key::SUBKEY_LEN, Result};
 
 pub mod siv_ctrmac;
 pub mod siv_gcm;
@@ -18,7 +18,7 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn new(nonce_len: usize, payload_len: usize) -> Result<Self, rand_core::Error> {
+    pub fn new(nonce_len: usize, payload_len: usize) -> Result<Self> {
         let mut nonce = vec![0_u8; nonce_len];
         OsRng.try_fill_bytes(&mut nonce)?;
 
@@ -46,42 +46,39 @@ pub trait FileCryptor {
 
     fn max_encrypted_chunk_len(&self) -> usize;
 
-    fn new_header(&self) -> Result<FileHeader, rand_core::Error>;
+    fn new_header(&self) -> Result<FileHeader>;
 
-    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError>;
+    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>>;
 
-    fn decrypt_header(
-        &self,
-        encrypted_header: impl AsRef<[u8]>,
-    ) -> Result<FileHeader, CryptorError>;
+    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<FileHeader>;
 
     fn encrypt_chunk(
         &self,
         chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError>;
+    ) -> Result<Vec<u8>>;
 
     fn decrypt_chunk(
         &self,
         encrypted_chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError>;
+    ) -> Result<Vec<u8>>;
 
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, CryptorError>;
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf>;
 
     fn encrypt_name(
         &self,
         name: impl AsRef<OsStr>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError>;
+    ) -> Result<String>;
 
     fn decrypt_name(
         &self,
         encrypted_name: impl AsRef<str>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError>;
+    ) -> Result<String>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -112,24 +109,21 @@ impl<'k> FileCryptor for Cryptor<'k> {
         }
     }
 
-    fn new_header(&self) -> Result<FileHeader, rand_core::Error> {
+    fn new_header(&self) -> Result<FileHeader> {
         match self {
             Cryptor::SivCtrMac(c) => c.new_header(),
             Cryptor::SivGcm(c) => c.new_header(),
         }
     }
 
-    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError> {
+    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         match self {
             Cryptor::SivCtrMac(c) => c.encrypt_header(header),
             Cryptor::SivGcm(c) => c.encrypt_header(header),
         }
     }
 
-    fn decrypt_header(
-        &self,
-        encrypted_header: impl AsRef<[u8]>,
-    ) -> Result<FileHeader, CryptorError> {
+    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<FileHeader> {
         match self {
             Cryptor::SivCtrMac(c) => c.decrypt_header(encrypted_header),
             Cryptor::SivGcm(c) => c.decrypt_header(encrypted_header),
@@ -141,7 +135,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         match self {
             Cryptor::SivCtrMac(c) => c.encrypt_chunk(chunk, header, chunk_number),
             Cryptor::SivGcm(c) => c.encrypt_chunk(chunk, header, chunk_number),
@@ -153,14 +147,14 @@ impl<'k> FileCryptor for Cryptor<'k> {
         encrypted_chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         match self {
             Cryptor::SivCtrMac(c) => c.decrypt_chunk(encrypted_chunk, header, chunk_number),
             Cryptor::SivGcm(c) => c.decrypt_chunk(encrypted_chunk, header, chunk_number),
         }
     }
 
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, CryptorError> {
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
         match self {
             Cryptor::SivCtrMac(c) => c.hash_dir_id(dir_id),
             Cryptor::SivGcm(c) => c.hash_dir_id(dir_id),
@@ -171,7 +165,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         name: impl AsRef<OsStr>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         match self {
             Cryptor::SivCtrMac(c) => c.encrypt_name(name, parent_dir_id),
             Cryptor::SivGcm(c) => c.encrypt_name(name, parent_dir_id),
@@ -182,7 +176,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         encrypted_name: impl AsRef<str>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         match self {
             Cryptor::SivCtrMac(c) => c.decrypt_name(encrypted_name, parent_dir_id),
             Cryptor::SivGcm(c) => c.decrypt_name(encrypted_name, parent_dir_id),

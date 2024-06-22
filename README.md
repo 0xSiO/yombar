@@ -1,6 +1,6 @@
 # cryptomator-rs
 
-Rust libraries and tools to interact with Cryptomator vaults.
+An alternative implementation of [Cryptomator](https://github.com/cryptomator/cryptomator) using Rust.
 
 ## Contributing
 

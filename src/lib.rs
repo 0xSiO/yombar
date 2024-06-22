@@ -1,5 +1,4 @@
 pub mod crypto;
-pub mod error;
 pub mod fs;
 mod key;
 pub mod util;

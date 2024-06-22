@@ -1,19 +1,20 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use aes::{
-    cipher::{KeyIvInit, StreamCipher, StreamCipherError},
+    cipher::{KeyIvInit, StreamCipher},
     Aes256,
 };
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
+use color_eyre::eyre::bail;
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 
-use crate::{error::CryptorError, key::SUBKEY_LEN, util, MasterKey};
+use crate::{key::SUBKEY_LEN, util, MasterKey, Result};
 
 use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
 
@@ -40,22 +41,13 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(
-        &self,
-        message: &[u8],
-        key: &[u8; SUBKEY_LEN],
-        nonce: &[u8],
-    ) -> Result<Vec<u8>, StreamCipherError> {
+    fn aes_ctr(&self, message: &[u8], key: &[u8; SUBKEY_LEN], nonce: &[u8]) -> Result<Vec<u8>> {
         let mut buffer = message.to_vec();
         Ctr128BE::<Aes256>::new(key.into(), nonce.into()).try_apply_keystream(&mut buffer)?;
         Ok(buffer)
     }
 
-    fn aes_siv_encrypt(
-        &self,
-        plaintext: &[u8],
-        associated_data: &[&[u8]],
-    ) -> Result<Vec<u8>, aes_siv::Error> {
+    fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
@@ -65,14 +57,10 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)
+        Ok(Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)?)
     }
 
-    fn aes_siv_decrypt(
-        &self,
-        ciphertext: &[u8],
-        associated_data: &[&[u8]],
-    ) -> Result<Vec<u8>, aes_siv::Error> {
+    fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
@@ -82,7 +70,7 @@ impl<'k> Cryptor<'k> {
         left.copy_from_slice(self.key.mac_key());
         right.copy_from_slice(self.key.enc_key());
 
-        Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)
+        Ok(Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)?)
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
@@ -103,7 +91,7 @@ impl<'k> Cryptor<'k> {
         chunk: &[u8],
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, StreamCipherError> {
+    ) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(nonce);
         buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
@@ -128,11 +116,11 @@ impl<'k> FileCryptor for Cryptor<'k> {
         MAX_ENCRYPTED_CHUNK_LEN
     }
 
-    fn new_header(&self) -> Result<FileHeader, rand_core::Error> {
+    fn new_header(&self) -> Result<FileHeader> {
         FileHeader::new(NONCE_LEN, PAYLOAD_LEN)
     }
 
-    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>, CryptorError> {
+    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(&header.nonce);
         buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce)?);
@@ -141,13 +129,10 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(buffer)
     }
 
-    fn decrypt_header(
-        &self,
-        encrypted_header: impl AsRef<[u8]>,
-    ) -> Result<FileHeader, CryptorError> {
+    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<FileHeader> {
         let encrypted_header = encrypted_header.as_ref();
         if encrypted_header.len() != ENCRYPTED_HEADER_LEN {
-            return Err(CryptorError::InvalidHeaderLen(encrypted_header.len()));
+            bail!("invalid header length: {}", encrypted_header.len());
         }
 
         // Ok to start slicing, we've checked the length
@@ -156,10 +141,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         // First, verify the HMAC
         let actual_mac = util::hmac(&encrypted_header[..NONCE_LEN + PAYLOAD_LEN], self.key);
         if actual_mac != expected_mac {
-            return Err(CryptorError::MacVerificationFailed {
-                expected: expected_mac.to_vec(),
-                actual: actual_mac,
-            });
+            bail!("failed to verify header MAC");
         }
 
         // Next, decrypt the payload
@@ -175,15 +157,15 @@ impl<'k> FileCryptor for Cryptor<'k> {
         chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         let chunk = chunk.as_ref();
         if chunk.is_empty() || chunk.len() > MAX_CHUNK_LEN {
-            return Err(CryptorError::InvalidChunkLen(chunk.len()));
+            bail!("invalid cleartext chunk length: {}", chunk.len());
         }
 
         let mut nonce = [0_u8; NONCE_LEN];
         OsRng.try_fill_bytes(&mut nonce)?;
-        Ok(self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)?)
+        self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)
     }
 
     fn decrypt_chunk(
@@ -191,12 +173,12 @@ impl<'k> FileCryptor for Cryptor<'k> {
         encrypted_chunk: impl AsRef<[u8]>,
         header: &FileHeader,
         chunk_number: usize,
-    ) -> Result<Vec<u8>, CryptorError> {
+    ) -> Result<Vec<u8>> {
         let encrypted_chunk = encrypted_chunk.as_ref();
         if encrypted_chunk.len() <= NONCE_LEN + MAC_LEN
             || encrypted_chunk.len() > MAX_ENCRYPTED_CHUNK_LEN
         {
-            return Err(CryptorError::InvalidChunkLen(encrypted_chunk.len()));
+            bail!("invalid ciphertext chunk length: {}", encrypted_chunk.len());
         }
 
         // First, verify the HMAC
@@ -204,10 +186,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
             encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
         let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
         if actual_mac != expected_mac {
-            return Err(CryptorError::MacVerificationFailed {
-                expected: expected_mac.to_vec(),
-                actual: actual_mac,
-            });
+            bail!("failed to verify chunk MAC");
         }
 
         // Next, decrypt the chunk
@@ -215,10 +194,10 @@ impl<'k> FileCryptor for Cryptor<'k> {
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
 
-        Ok(self.aes_ctr(chunk, &header.content_key(), &nonce)?)
+        self.aes_ctr(chunk, &header.content_key(), &nonce)
     }
 
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf, CryptorError> {
+    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
         let ciphertext = self.aes_siv_encrypt(dir_id.as_ref().as_bytes(), &[])?;
         let hash = Sha1::new().chain_update(ciphertext).finalize();
         let base32 = Base32Upper::encode_string(&hash);
@@ -232,7 +211,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         name: impl AsRef<OsStr>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
             // TODO: Is it okay to use lossy UTF-8 conversion?
             name.as_ref().to_string_lossy().as_bytes(),
@@ -244,7 +223,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         &self,
         encrypted_name: impl AsRef<str>,
         parent_dir_id: impl AsRef<str>,
-    ) -> Result<String, CryptorError> {
+    ) -> Result<String> {
         // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
             &Base64Url::decode_vec(encrypted_name.as_ref())?,

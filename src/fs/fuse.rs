@@ -87,6 +87,7 @@ impl<'v> FuseFileSystem<'v> {
 }
 
 // TODO: Look into removing cached tree entries that are no longer valid where possible
+// TODO: Better error handling and use of error codes
 impl<'v> Filesystem for FuseFileSystem<'v> {
     fn init(
         &mut self,

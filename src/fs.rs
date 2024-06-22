@@ -160,9 +160,15 @@ impl<'v> EncryptedFileSystem<'v> {
             .get_ciphertext_path(cleartext_path, dir_id)?;
 
         let file = if ciphertext_path.join("contents.c9r").is_file() {
-            File::open(ciphertext_path.join("contents.c9r"))?
+            File::options()
+                .read(true)
+                .write(true)
+                .open(ciphertext_path.join("contents.c9r"))?
         } else {
-            File::open(ciphertext_path)?
+            File::options()
+                .read(true)
+                .write(true)
+                .open(ciphertext_path)?
         };
 
         EncryptedStream::open(self.vault.cryptor(), file)
@@ -363,9 +369,17 @@ impl<'v> EncryptedFileSystem<'v> {
                 .translator
                 .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
-            File::create_new(ciphertext_path.join("contents.c9r"))?
+            File::options()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(ciphertext_path.join("contents.c9r"))?
         } else {
-            File::create_new(ciphertext_path)?
+            File::options()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(ciphertext_path)?
         };
 
         let mut stream = EncryptedStream::open(self.vault.cryptor(), &ciphertext_file)?;
@@ -437,7 +451,12 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 
-        let symlink = File::create(ciphertext_path.join("symlink.c9r"))?;
+        let symlink = File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(ciphertext_path.join("symlink.c9r"))?;
         let mut stream = EncryptedStream::open(self.vault.cryptor(), symlink)?;
         stream.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
         stream.flush()?;

@@ -338,40 +338,76 @@ impl<'k, W: Write> Write for EncryptStream<'k, W> {
 
 #[cfg(test)]
 mod tests {
-    use base64ct::{Base64Url, Encoding};
     use io::Cursor;
 
-    use crate::{crypto::siv_ctrmac, key::SUBKEY_LEN, MasterKey};
+    use crate::{
+        crypto::{siv_ctrmac, siv_gcm},
+        MasterKey,
+    };
 
     use super::*;
 
     #[test]
-    fn stream_write_test() {
-        // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([19_u8; SUBKEY_LEN * 2]) };
+    fn siv_ctrmac_io_test() {
+        let key = MasterKey::new().unwrap();
         let cryptor = Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(&key));
+        let mut stream = EncryptedStream::open(cryptor, Cursor::new(vec![])).unwrap();
 
-        let mut buffer: Vec<u8> = vec![];
-        let mut stream = EncryptedStream::open(cryptor, Cursor::new(&mut buffer)).unwrap();
+        // Writes
         stream.write_all(b"this is a ").unwrap();
+        assert_eq!(stream.cleartext_size, 10);
         stream.write_all(b"test").unwrap();
+        assert_eq!(stream.cleartext_size, 14);
         stream.flush().unwrap();
 
+        // Partial reads
+        let mut decrypted = [0_u8; 4];
+        stream.rewind().unwrap();
+        stream.read_exact(&mut decrypted).unwrap();
+        assert_eq!(&decrypted, b"this");
+
+        // Full reads
         let mut decrypted = String::new();
         stream.rewind().unwrap();
         stream.read_to_string(&mut decrypted).unwrap();
-        dbg!(decrypted);
+        assert_eq!(decrypted, "this is a test");
 
-        let header = stream.file_header.clone();
-        drop(stream);
+        stream.seek(SeekFrom::Start(4)).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&Vec::from(stream.chunk_buffer)),
+            " is a test"
+        );
+    }
 
-        dbg!(Base64Url::encode_string(&buffer));
+    #[test]
+    fn siv_gcm_io_test() {
+        let key = MasterKey::new().unwrap();
+        let cryptor = Cryptor::SivGcm(siv_gcm::Cryptor::new(&key));
+        let mut stream = EncryptedStream::open(cryptor, Cursor::new(vec![])).unwrap();
 
-        let mut stream = EncryptStream::new(cryptor, header, Cursor::new(&mut buffer));
+        // Writes
         stream.write_all(b"this is a ").unwrap();
+        assert_eq!(stream.cleartext_size, 10);
         stream.write_all(b"test").unwrap();
+        assert_eq!(stream.cleartext_size, 14);
         stream.flush().unwrap();
 
-        dbg!(Base64Url::encode_string(&buffer));
+        // Partial reads
+        let mut decrypted = [0_u8; 4];
+        stream.rewind().unwrap();
+        stream.read_exact(&mut decrypted).unwrap();
+        assert_eq!(&decrypted, b"this");
+
+        // Full reads
+        let mut decrypted = String::new();
+        stream.rewind().unwrap();
+        stream.read_to_string(&mut decrypted).unwrap();
+        assert_eq!(decrypted, "this is a test");
+
+        stream.seek(SeekFrom::Start(4)).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&Vec::from(stream.chunk_buffer)),
+            " is a test"
+        );
     }
 }

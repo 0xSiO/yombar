@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::{File, Permissions},
+    fs::Permissions,
     io::{Seek, SeekFrom},
     os::unix::{
         ffi::OsStrExt,
@@ -14,8 +14,8 @@ use std::{
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
 
 use crate::{
-    fs::{DirEntry, EncryptedFileSystem, FileKind},
-    io::{try_read_exact, EncryptedStream},
+    fs::{DirEntry, EncryptedFile, EncryptedFileSystem, FileKind},
+    util,
 };
 
 mod dir_tree;
@@ -70,7 +70,7 @@ pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     tree: DirTree,
     dir_entries: HashMap<Inode, BTreeMap<PathBuf, DirEntry>>,
-    file_handles: HashMap<u64, EncryptedStream<'v, File>>,
+    file_handles: HashMap<u64, EncryptedFile<'v>>,
     next_file_handle: AtomicU64,
 }
 
@@ -311,7 +311,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    if let (false, n) = try_read_exact(&mut stream, &mut buf).unwrap() {
+                    if let (false, n) = util::try_read_exact(&mut stream, &mut buf).unwrap() {
                         buf.truncate(n)
                     }
                     return reply.data(&buf);

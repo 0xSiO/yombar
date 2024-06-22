@@ -1,16 +1,18 @@
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fs::{self, File, Metadata, Permissions},
+    fs::{self, Metadata, Permissions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, io::EncryptedStream, util, Vault};
+use crate::{crypto::FileCryptor, util, Vault};
 
+mod encrypted_file;
 pub mod fuse;
 mod translator;
 
+pub use encrypted_file::EncryptedFile;
 use translator::Translator;
 use uuid::Uuid;
 
@@ -144,8 +146,8 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_file() {
             let mut decrypted = String::new();
-            let file = File::open(ciphertext_path)?;
-            EncryptedStream::open(self.vault.cryptor(), file)?.read_to_string(&mut decrypted)?;
+            EncryptedFile::open(self.vault.cryptor(), ciphertext_path)?
+                .read_to_string(&mut decrypted)?;
 
             return Ok(decrypted.into());
         }
@@ -153,7 +155,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Err(io::Error::new(io::ErrorKind::InvalidData, "not a link"))
     }
 
-    fn open_file(&self, cleartext_path: impl AsRef<Path>) -> io::Result<EncryptedStream<'v, File>> {
+    fn open_file(&self, cleartext_path: impl AsRef<Path>) -> io::Result<EncryptedFile<'v>> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let mut ciphertext_path = self
             .translator
@@ -163,13 +165,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        EncryptedStream::open(
-            self.vault.cryptor(),
-            File::options()
-                .read(true)
-                .write(true)
-                .open(ciphertext_path)?,
-        )
+        EncryptedFile::open(self.vault.cryptor(), ciphertext_path)
     }
 
     fn rename_file(
@@ -370,17 +366,13 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        let ciphertext_file = File::create_new(ciphertext_path)?;
-        let mut stream = EncryptedStream::open(self.vault.cryptor(), &ciphertext_file)?;
-        // TODO: Does this work as we expect (i.e. create a file with just a file header)?
-        stream.flush()?;
-        ciphertext_file.set_permissions(permissions)?;
+        let file = EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path)?;
+        file.set_permissions(permissions)?;
 
-        let meta = ciphertext_file.metadata()?;
         Ok(DirEntry {
             kind: FileKind::File,
             size: 0,
-            metadata: meta,
+            metadata: file.metadata()?,
         })
     }
 
@@ -440,18 +432,15 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 
-        let symlink = File::create_new(ciphertext_path.join("symlink.c9r"))?;
-        let mut stream = EncryptedStream::open(self.vault.cryptor(), symlink)?;
-        stream.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
-        stream.flush()?;
-
-        let meta = ciphertext_path.join("symlink.c9r").metadata()?;
-        let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+        let mut symlink =
+            EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path.join("symlink.c9r"))?;
+        symlink.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
+        symlink.flush()?;
 
         Ok(DirEntry {
             kind: FileKind::Symlink,
-            size,
-            metadata: meta,
+            size: symlink.cleartext_size()?,
+            metadata: symlink.metadata()?,
         })
     }
 

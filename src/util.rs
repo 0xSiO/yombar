@@ -1,3 +1,5 @@
+use std::io::{self, Read};
+
 use aes_kw::{Kek, KekAes256};
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
@@ -60,6 +62,27 @@ pub fn verify_jwt<T: DeserializeOwned>(
         &DecodingKey::from_secret(key.raw_key()),
         &validation,
     )
+}
+
+/// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole
+/// buffer could be filled and the number of bytes read.
+pub fn try_read_exact<R: Read + ?Sized>(
+    this: &mut R,
+    mut buf: &mut [u8],
+) -> io::Result<(bool, usize)> {
+    let mut bytes_read: usize = 0;
+    while !buf.is_empty() {
+        match this.read(buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf = &mut buf[n..];
+                bytes_read += n;
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok((buf.is_empty(), bytes_read))
 }
 
 pub fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {

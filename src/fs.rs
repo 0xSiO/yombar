@@ -155,23 +155,21 @@ impl<'v> EncryptedFileSystem<'v> {
 
     fn open_file(&self, cleartext_path: impl AsRef<Path>) -> io::Result<EncryptedStream<'v, File>> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
-        let ciphertext_path = self
+        let mut ciphertext_path = self
             .translator
             .get_ciphertext_path(cleartext_path, dir_id)?;
 
-        let file = if ciphertext_path.join("contents.c9r").is_file() {
-            File::options()
-                .read(true)
-                .write(true)
-                .open(ciphertext_path.join("contents.c9r"))?
-        } else {
-            File::options()
-                .read(true)
-                .write(true)
-                .open(ciphertext_path)?
-        };
+        if ciphertext_path.join("contents.c9r").is_file() {
+            ciphertext_path = ciphertext_path.join("contents.c9r");
+        }
 
-        EncryptedStream::open(self.vault.cryptor(), file)
+        EncryptedStream::open(
+            self.vault.cryptor(),
+            File::options()
+                .read(true)
+                .write(true)
+                .open(ciphertext_path)?,
+        )
     }
 
     fn rename_file(
@@ -359,29 +357,20 @@ impl<'v> EncryptedFileSystem<'v> {
         permissions: Permissions,
     ) -> io::Result<DirEntry> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
-        let ciphertext_path = self
+        let mut ciphertext_path = self
             .translator
             .get_ciphertext_path(parent.as_ref().join(name), &parent_dir_id)?;
 
-        let ciphertext_file = if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
             fs::create_dir_all(&ciphertext_path)?;
             let full_name = self
                 .translator
                 .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
-            File::options()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(ciphertext_path.join("contents.c9r"))?
-        } else {
-            File::options()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(ciphertext_path)?
-        };
+            ciphertext_path = ciphertext_path.join("contents.c9r");
+        }
 
+        let ciphertext_file = File::create_new(ciphertext_path)?;
         let mut stream = EncryptedStream::open(self.vault.cryptor(), &ciphertext_file)?;
         // TODO: Does this work as we expect (i.e. create a file with just a file header)?
         stream.flush()?;
@@ -451,12 +440,7 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 
-        let symlink = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(ciphertext_path.join("symlink.c9r"))?;
+        let symlink = File::create_new(ciphertext_path.join("symlink.c9r"))?;
         let mut stream = EncryptedStream::open(self.vault.cryptor(), symlink)?;
         stream.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
         stream.flush()?;

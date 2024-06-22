@@ -174,10 +174,6 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
         let chunk_number = current_pos / max_chunk_len;
         let chunk_offset = current_pos % max_chunk_len;
         let chunk_start = chunk_number * max_chunk_len;
-        println!(
-            "chunk_number: {}, chunk_offset: {}, chunk_start: {}",
-            chunk_number, chunk_offset, chunk_start
-        );
 
         // Ensure we're positioned at a chunk boundary
         if chunk_offset > 0 {
@@ -190,33 +186,28 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
             // At EOF - replacement chunk is either a max-size chunk or the entire buffer,
             // whichever is smaller
             (false, 0) => {
-                println!("end of file, adding chunk");
                 let chunk = &buf[..buf.len().min(max_chunk_len)];
                 bytes_written = chunk.len();
                 self.cryptor
-                    .encrypt_chunk(
-                        chunk,
-                        &self.file_header,
-                        // We're writing a new chunk at the end
-                        chunk_number + 1,
-                    )
+                    .encrypt_chunk(chunk, &self.file_header, chunk_number)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             }
             // Within last chunk - replacement chunk is the last chunk overwritten with data from
             // buffer, up to one max-size chunk
             (false, n) => {
-                println!("end of file, replacing partial chunk");
                 ciphertext_chunk.truncate(n);
                 let mut chunk = self
                     .cryptor
                     .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                let original_len = chunk.len();
 
                 chunk.resize(max_chunk_len, 0);
                 bytes_written = (&mut chunk[chunk_offset..]).write(buf)?;
+
                 // If we made the chunk bigger, truncate to a larger size than the original chunk.
                 // Otherwise, truncate to the original chunk size.
-                chunk.truncate(n.max(chunk_offset + bytes_written));
+                chunk.truncate(original_len.max(chunk_offset + bytes_written));
 
                 self.cryptor
                     .encrypt_chunk(chunk, &self.file_header, chunk_number)
@@ -224,7 +215,6 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
             }
             // Got a whole chunk
             _ => {
-                println!("replacing full chunk");
                 // If we're just overwriting the whole chunk, no need to decrypt existing chunk
                 if chunk_offset == 0 && buf.len() >= max_chunk_len {
                     let chunk = &buf[..max_chunk_len];
@@ -248,10 +238,11 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
         };
 
         if bytes_written > 0 {
+            self.seek(SeekFrom::Start(chunk_start as u64))?;
             self.inner.write_all(&replacement_chunk)?;
-            self.cleartext_size = self.seek(SeekFrom::End(0))?;
-            self.seek(SeekFrom::Start((current_pos + bytes_written) as u64))
-                .unwrap();
+            self.cleartext_size =
+                util::get_cleartext_size(self.cryptor, self.inner.seek(SeekFrom::End(0))?);
+            self.seek(SeekFrom::Start((current_pos + bytes_written) as u64))?;
         }
 
         Ok(bytes_written)
@@ -362,9 +353,14 @@ mod tests {
 
         let mut buffer: Vec<u8> = vec![];
         let mut stream = EncryptedStream::open(cryptor, Cursor::new(&mut buffer)).unwrap();
-        stream.write_all(b"this is a").unwrap();
+        stream.write_all(b"this is a ").unwrap();
         stream.write_all(b"test").unwrap();
         stream.flush().unwrap();
+
+        let mut decrypted = String::new();
+        stream.rewind().unwrap();
+        stream.read_to_string(&mut decrypted).unwrap();
+        dbg!(decrypted);
 
         let header = stream.file_header.clone();
         drop(stream);
@@ -372,7 +368,7 @@ mod tests {
         dbg!(Base64Url::encode_string(&buffer));
 
         let mut stream = EncryptStream::new(cryptor, header, Cursor::new(&mut buffer));
-        stream.write_all(b"this is a").unwrap();
+        stream.write_all(b"this is a ").unwrap();
         stream.write_all(b"test").unwrap();
         stream.flush().unwrap();
 

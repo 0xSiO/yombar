@@ -16,8 +16,6 @@ pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: File,
     header: FileHeader,
-    // TODO: Explore how read() would perform without this buffer, in case we want to really limit
-    // the amount of cleartext data floating around in memory
     chunk_buffer: VecDeque<u8>,
 }
 
@@ -81,6 +79,9 @@ impl<'k> Deref for EncryptedFile<'k> {
     }
 }
 
+// TODO: This implementation assumes the file position is always at a chunk boundary, which is no
+// longer the case with the new Write impl. This needs to be rewritten, probably without the chunk
+// buffer. Also take another look at the Seek impl to see if it's affected by the same issue.
 impl<'k> Read for EncryptedFile<'k> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.chunk_buffer.len() <= buf.len() {

@@ -58,9 +58,12 @@ impl<'k, I: Read + Seek + Write> EncryptedStream<'k, I> {
         };
 
         // Grab the length of the stream, then skip back to the end of the header
-        inner.seek(SeekFrom::End(0))?;
-        let cleartext_size = util::get_cleartext_size(cryptor, inner.stream_position()?);
-        inner.seek(SeekFrom::Start(cryptor.encrypted_header_len() as u64))?;
+        // TODO: Use stream_len once stabilized?
+        let old_pos = inner.stream_position()?;
+        let cleartext_size = util::get_cleartext_size(cryptor, inner.seek(SeekFrom::End(0))?);
+        if old_pos != cleartext_size {
+            inner.seek(SeekFrom::Start(old_pos))?;
+        }
 
         Ok(Self {
             inner,
@@ -159,6 +162,107 @@ impl<'k, I: Read + Seek> Seek for EncryptedStream<'k, I> {
                 self.seek(SeekFrom::Start(new_pos))
             }
         }
+    }
+}
+
+// TODO: Maybe review addition/subtraction for potential overflow/underflow
+impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let enc_header_len = self.cryptor.encrypted_header_len() as u64;
+        let max_enc_chunk_len = self.cryptor.max_encrypted_chunk_len() as u64;
+        let max_chunk_len = self.cryptor.max_chunk_len() as u64;
+
+        let chunk_number =
+            (self.inner.stream_position()?.saturating_sub(enc_header_len)) / max_enc_chunk_len;
+        let chunk_remainder =
+            (self.inner.stream_position()?.saturating_sub(enc_header_len)) % max_enc_chunk_len;
+        let remainder = chunk_remainder.saturating_sub(max_enc_chunk_len - max_chunk_len) as usize;
+
+        // Ensure we're positioned at a chunk boundary
+        if remainder > 0 {
+            self.inner.seek(SeekFrom::Start(
+                enc_header_len + chunk_number * max_enc_chunk_len,
+            ))?;
+        }
+
+        let bytes_written;
+        let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
+        let replacement_chunk = match try_read_exact(&mut self.inner, &mut ciphertext_chunk)? {
+            // At EOF - replacement chunk is either a max-size chunk or the entire buffer,
+            // whichever is smaller
+            (false, 0) => {
+                let chunk = &buf[..buf.len().min(max_chunk_len as usize)];
+                bytes_written = chunk.len();
+                self.cryptor
+                    .encrypt_chunk(
+                        chunk,
+                        &self.file_header,
+                        // We're writing a new chunk at the end
+                        chunk_number as usize + 1,
+                    )
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+            }
+            // Within last chunk - replacement chunk is the last chunk overwritten with data from
+            // buffer, up to one max-size chunk
+            (false, n) => {
+                ciphertext_chunk.truncate(n);
+                let mut chunk = self
+                    .cryptor
+                    .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+                chunk.resize(max_chunk_len as usize, 0);
+                bytes_written = (&mut chunk[remainder..]).write(buf)?;
+                // If we made the chunk bigger, truncate to a larger size than the original chunk.
+                // Otherwise, truncate to the original chunk size.
+                chunk.truncate(n.max(remainder + bytes_written));
+
+                self.cryptor
+                    .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+            }
+            // Got a whole chunk
+            _ => {
+                // If we're just overwriting the whole chunk, no need to decrypt existing chunk
+                if remainder == 0 && buf.len() >= max_chunk_len as usize {
+                    let chunk = &buf[..max_chunk_len as usize];
+                    bytes_written = chunk.len();
+                    self.cryptor
+                        .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                // Otherwise, write data from buffer into the existing chunk
+                } else {
+                    let mut chunk = self
+                        .cryptor
+                        .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    bytes_written = (&mut chunk[remainder..]).write(buf)?;
+
+                    self.cryptor
+                        .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                }
+            }
+        };
+
+        if bytes_written > 0 {
+            self.inner.write_all(&replacement_chunk)?;
+
+            // Grab the length of the stream, then skip back to where we were
+            // TODO: Use stream_len once stabilized?
+            let old_pos = self.inner.stream_position()?;
+            self.cleartext_size =
+                util::get_cleartext_size(self.cryptor, self.inner.seek(SeekFrom::End(0))?);
+            if old_pos != self.cleartext_size {
+                self.inner.seek(SeekFrom::Start(old_pos))?;
+            }
+        }
+
+        Ok(bytes_written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
     }
 }
 

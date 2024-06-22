@@ -6,11 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{
-    crypto::FileCryptor,
-    io::{EncryptStream, EncryptedStream},
-    util, Vault,
-};
+use crate::{crypto::FileCryptor, io::EncryptedStream, util, Vault};
 
 pub mod fuse;
 mod translator;
@@ -372,13 +368,8 @@ impl<'v> EncryptedFileSystem<'v> {
             File::create_new(ciphertext_path)?
         };
 
-        let mut stream = EncryptStream::new(
-            self.vault.cryptor(),
-            self.vault.cryptor().new_header()?,
-            &ciphertext_file,
-        );
-        // TODO: Not sure about this
-        stream.write_all(b"")?;
+        let mut stream = EncryptedStream::open(self.vault.cryptor(), &ciphertext_file)?;
+        // TODO: Does this work as we expect (i.e. create a file with just a file header)?
         stream.flush()?;
         ciphertext_file.set_permissions(permissions)?;
 
@@ -447,11 +438,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
 
         let symlink = File::create(ciphertext_path.join("symlink.c9r"))?;
-        let mut stream = EncryptStream::new(
-            self.vault.cryptor(),
-            self.vault.cryptor().new_header()?,
-            symlink,
-        );
+        let mut stream = EncryptedStream::open(self.vault.cryptor(), symlink)?;
         stream.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
         stream.flush()?;
 

@@ -1,15 +1,13 @@
 use std::{
     fs::{self, File},
-    io::{Cursor, Read, Write},
+    io::{Cursor, Read, Seek, Write},
     path::PathBuf,
     str::FromStr,
 };
 
 use base64ct::{Base64, Encoding};
 use cryptomator::{
-    crypto::FileCryptor,
-    io::{EncryptStream, EncryptedStream},
-    util, CipherCombo, MasterKey, Vault, VaultConfig,
+    crypto::FileCryptor, io::EncryptedStream, util, CipherCombo, MasterKey, Vault, VaultConfig,
 };
 use jsonwebtoken::{TokenData, Validation};
 use uuid::Uuid;
@@ -191,21 +189,19 @@ pub fn siv_gcm_basic() {
         "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
     )
     .unwrap();
-    let header = cryptor.decrypt_header(&ciphertext[..68]).unwrap();
 
     let mut buffer = Vec::new();
-    let mut stream = EncryptStream::new(cryptor, header, &mut buffer);
+    let mut stream = EncryptedStream::open(cryptor, Cursor::new(&mut buffer)).unwrap();
     stream
         .write_all(b"this is a test file with some text in it\n")
         .unwrap();
     stream.flush().unwrap();
 
-    assert_eq!(buffer.len(), ciphertext.len());
-
-    let cursor = Cursor::new(buffer);
-    let mut stream = EncryptedStream::open(cryptor, cursor).unwrap();
     let mut decrypted = String::new();
+    stream.rewind().unwrap();
     stream.read_to_string(&mut decrypted).unwrap();
+
+    assert_eq!(buffer.len(), ciphertext.len());
     assert_eq!(decrypted, "this is a test file with some text in it\n");
 
     // Check writing larger files
@@ -213,19 +209,17 @@ pub fn siv_gcm_basic() {
         "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r",
     )
     .unwrap();
-    let header = cryptor.decrypt_header(&ciphertext[..68]).unwrap();
     let image_data = fs::read("tests/fixtures/test_image.jpg").unwrap();
 
     let mut buffer = Vec::new();
-    let mut stream = EncryptStream::new(cryptor, header, &mut buffer);
+    let mut stream = EncryptedStream::open(cryptor, Cursor::new(&mut buffer)).unwrap();
     stream.write_all(&image_data).unwrap();
     stream.flush().unwrap();
 
-    assert_eq!(buffer.len(), ciphertext.len());
-
-    let cursor = Cursor::new(buffer);
-    let mut stream = EncryptedStream::open(cryptor, cursor).unwrap();
     let mut decrypted = Vec::new();
+    stream.rewind().unwrap();
     stream.read_to_end(&mut decrypted).unwrap();
+
+    assert_eq!(buffer.len(), ciphertext.len());
     assert_eq!(decrypted, image_data);
 }

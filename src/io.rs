@@ -168,21 +168,20 @@ impl<'k, I: Read + Seek> Seek for EncryptedStream<'k, I> {
 // TODO: Maybe review addition/subtraction for potential overflow/underflow
 impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let enc_header_len = self.cryptor.encrypted_header_len() as u64;
-        let max_enc_chunk_len = self.cryptor.max_encrypted_chunk_len() as u64;
-        let max_chunk_len = self.cryptor.max_chunk_len() as u64;
+        let max_chunk_len = self.cryptor.max_chunk_len();
 
-        let chunk_number =
-            (self.inner.stream_position()?.saturating_sub(enc_header_len)) / max_enc_chunk_len;
-        let chunk_remainder =
-            (self.inner.stream_position()?.saturating_sub(enc_header_len)) % max_enc_chunk_len;
-        let remainder = chunk_remainder.saturating_sub(max_enc_chunk_len - max_chunk_len) as usize;
+        let current_pos = self.stream_position()? as usize;
+        let chunk_number = current_pos / max_chunk_len;
+        let chunk_offset = current_pos % max_chunk_len;
+        let chunk_start = chunk_number * max_chunk_len;
+        println!(
+            "chunk_number: {}, chunk_offset: {}, chunk_start: {}",
+            chunk_number, chunk_offset, chunk_start
+        );
 
         // Ensure we're positioned at a chunk boundary
-        if remainder > 0 {
-            self.inner.seek(SeekFrom::Start(
-                enc_header_len + chunk_number * max_enc_chunk_len,
-            ))?;
+        if chunk_offset > 0 {
+            self.seek(SeekFrom::Start(chunk_start as u64))?;
         }
 
         let bytes_written;
@@ -191,55 +190,58 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
             // At EOF - replacement chunk is either a max-size chunk or the entire buffer,
             // whichever is smaller
             (false, 0) => {
-                let chunk = &buf[..buf.len().min(max_chunk_len as usize)];
+                println!("end of file, adding chunk");
+                let chunk = &buf[..buf.len().min(max_chunk_len)];
                 bytes_written = chunk.len();
                 self.cryptor
                     .encrypt_chunk(
                         chunk,
                         &self.file_header,
                         // We're writing a new chunk at the end
-                        chunk_number as usize + 1,
+                        chunk_number + 1,
                     )
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             }
             // Within last chunk - replacement chunk is the last chunk overwritten with data from
             // buffer, up to one max-size chunk
             (false, n) => {
+                println!("end of file, replacing partial chunk");
                 ciphertext_chunk.truncate(n);
                 let mut chunk = self
                     .cryptor
-                    .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
+                    .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-                chunk.resize(max_chunk_len as usize, 0);
-                bytes_written = (&mut chunk[remainder..]).write(buf)?;
+                chunk.resize(max_chunk_len, 0);
+                bytes_written = (&mut chunk[chunk_offset..]).write(buf)?;
                 // If we made the chunk bigger, truncate to a larger size than the original chunk.
                 // Otherwise, truncate to the original chunk size.
-                chunk.truncate(n.max(remainder + bytes_written));
+                chunk.truncate(n.max(chunk_offset + bytes_written));
 
                 self.cryptor
-                    .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                    .encrypt_chunk(chunk, &self.file_header, chunk_number)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
             }
             // Got a whole chunk
             _ => {
+                println!("replacing full chunk");
                 // If we're just overwriting the whole chunk, no need to decrypt existing chunk
-                if remainder == 0 && buf.len() >= max_chunk_len as usize {
-                    let chunk = &buf[..max_chunk_len as usize];
+                if chunk_offset == 0 && buf.len() >= max_chunk_len {
+                    let chunk = &buf[..max_chunk_len];
                     bytes_written = chunk.len();
                     self.cryptor
-                        .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                        .encrypt_chunk(chunk, &self.file_header, chunk_number)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
                 // Otherwise, write data from buffer into the existing chunk
                 } else {
                     let mut chunk = self
                         .cryptor
-                        .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number as usize)
+                        .decrypt_chunk(ciphertext_chunk, &self.file_header, chunk_number)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-                    bytes_written = (&mut chunk[remainder..]).write(buf)?;
+                    bytes_written = (&mut chunk[chunk_offset..]).write(buf)?;
 
                     self.cryptor
-                        .encrypt_chunk(chunk, &self.file_header, chunk_number as usize)
+                        .encrypt_chunk(chunk, &self.file_header, chunk_number)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
                 }
             }
@@ -247,15 +249,9 @@ impl<'k, I: Read + Seek + Write> Write for EncryptedStream<'k, I> {
 
         if bytes_written > 0 {
             self.inner.write_all(&replacement_chunk)?;
-
-            // Grab the length of the stream, then skip back to where we were
-            // TODO: Use stream_len once stabilized?
-            let old_pos = self.inner.stream_position()?;
-            self.cleartext_size =
-                util::get_cleartext_size(self.cryptor, self.inner.seek(SeekFrom::End(0))?);
-            if old_pos != self.cleartext_size {
-                self.inner.seek(SeekFrom::Start(old_pos))?;
-            }
+            self.cleartext_size = self.seek(SeekFrom::End(0))?;
+            self.seek(SeekFrom::Start((current_pos + bytes_written) as u64))
+                .unwrap();
         }
 
         Ok(bytes_written)
@@ -346,5 +342,40 @@ impl<'k, W: Write> Write for EncryptStream<'k, W> {
         }
 
         self.inner.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64ct::{Base64Url, Encoding};
+    use io::Cursor;
+
+    use crate::{crypto::siv_ctrmac, key::SUBKEY_LEN, MasterKey};
+
+    use super::*;
+
+    #[test]
+    fn stream_write_test() {
+        // Safe, this is for test purposes only
+        let key = unsafe { MasterKey::from_bytes([19_u8; SUBKEY_LEN * 2]) };
+        let cryptor = Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(&key));
+
+        let mut buffer: Vec<u8> = vec![];
+        let mut stream = EncryptedStream::open(cryptor, Cursor::new(&mut buffer)).unwrap();
+        stream.write_all(b"this is a").unwrap();
+        stream.write_all(b"test").unwrap();
+        stream.flush().unwrap();
+
+        let header = stream.file_header.clone();
+        drop(stream);
+
+        dbg!(Base64Url::encode_string(&buffer));
+
+        let mut stream = EncryptStream::new(cryptor, header, Cursor::new(&mut buffer));
+        stream.write_all(b"this is a").unwrap();
+        stream.write_all(b"test").unwrap();
+        stream.flush().unwrap();
+
+        dbg!(Base64Url::encode_string(&buffer));
     }
 }

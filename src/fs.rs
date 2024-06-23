@@ -365,7 +365,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        let file = EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path)?;
+        let mut file = EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path)?;
         file.set_permissions(permissions)?;
 
         Ok(DirEntry {
@@ -438,7 +438,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
         Ok(DirEntry {
             kind: FileKind::Symlink,
-            size: symlink.cleartext_size()?,
+            size: symlink.len()?,
             metadata: symlink.metadata()?,
         })
     }

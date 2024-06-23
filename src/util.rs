@@ -61,10 +61,7 @@ pub fn verify_jwt<T: DeserializeOwned>(
 
 /// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole
 /// buffer could be filled and the number of bytes read.
-pub fn try_read_exact<R: Read + ?Sized>(
-    this: &mut R,
-    mut buf: &mut [u8],
-) -> io::Result<(bool, usize)> {
+pub fn try_read_exact(mut this: impl Read, mut buf: &mut [u8]) -> io::Result<(bool, usize)> {
     let mut bytes_read: usize = 0;
     while !buf.is_empty() {
         match this.read(buf) {

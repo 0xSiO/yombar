@@ -12,7 +12,6 @@ use std::{
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
-use tracing::instrument;
 
 use crate::{
     fs::{DirEntry, EncryptedFile, EncryptedFileSystem, FileKind},
@@ -152,7 +151,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.error(libc::ENOENT);
     }
 
-    #[instrument(skip(self, _req, reply))]
     fn mknod(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -169,7 +167,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     let inode = self.tree.insert_path(parent.join(name));
                     return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
                 }
-                Err(err) => tracing::error!("{:?}", err),
+                Err(err) => tracing::error!("{err:?}"),
             }
         }
 
@@ -316,13 +314,20 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    if let (false, n) = util::try_read_exact(&mut stream, &mut buf).unwrap() {
-                        buf.truncate(n)
+                    match util::try_read_exact(&mut stream, &mut buf) {
+                        Ok((false, n)) => buf.truncate(n),
+                        Ok(_) => {}
+                        Err(err) => {
+                            tracing::error!("{err:?}");
+                            return reply.error(libc::EIO);
+                        }
                     }
                     return reply.data(&buf);
                 }
-                // TODO: Maybe add better error handling here
-                Err(_) => return reply.data(&[]),
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    return reply.error(libc::EIO);
+                }
             }
         }
 

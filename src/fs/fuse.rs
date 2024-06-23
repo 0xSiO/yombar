@@ -87,7 +87,6 @@ impl<'v> FuseFileSystem<'v> {
 }
 
 // TODO: Look into removing cached tree entries that are no longer valid where possible
-// TODO: Better error handling and use of error codes
 impl<'v> Filesystem for FuseFileSystem<'v> {
     fn init(
         &mut self,
@@ -109,17 +108,29 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
             if let Ok(entry) = self.fs.dir_entry(&target_path) {
                 let inode = self.tree.insert_path(target_path);
-                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+                reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+            } else {
+                // TODO: This will ignore other errors and just assume the path is not found
+                // Maybe we want to distinguish these cases
+                tracing::warn!(?target_path, "path not found");
+                reply.error(libc::ENOENT);
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         if let Some(path) = self.tree.get_path(ino) {
             if path.parent().is_none() {
-                let metadata = self.fs.root_dir().metadata().unwrap();
+                let metadata = match self.fs.root_dir().metadata() {
+                    Ok(metadata) => metadata,
+                    Err(err) => {
+                        tracing::error!("{err:?}");
+                        return reply.error(libc::EIO);
+                    }
+                };
                 return reply.attr(
                     &TTL,
                     &FileAttr::from(Attributes {
@@ -133,22 +144,34 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 );
             }
 
-            if let Ok(entry) = self.fs.dir_entry(path) {
-                return reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));
+            match self.fs.dir_entry(path) {
+                Ok(entry) => {
+                    reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
         if let Some(path) = self.tree.get_path(ino) {
-            if let Ok(target) = self.fs.link_target(path) {
-                return reply.data(target.as_os_str().as_bytes());
+            match self.fs.link_target(path) {
+                Ok(target) => reply.data(target.as_os_str().as_bytes()),
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn mknod(
@@ -165,13 +188,17 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             match self.fs.mknod(&parent, name, Permissions::from_mode(mode)) {
                 Ok(entry) => {
                     let inode = self.tree.insert_path(parent.join(name));
-                    return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+                    reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
                 }
-                Err(err) => tracing::error!("{err:?}"),
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn mkdir(
@@ -185,13 +212,20 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            if let Ok(entry) = self.fs.mkdir(&parent, name, Permissions::from_mode(mode)) {
-                let inode = self.tree.insert_path(parent.join(name));
-                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+            match self.fs.mkdir(&parent, name, Permissions::from_mode(mode)) {
+                Ok(entry) => {
+                    let inode = self.tree.insert_path(parent.join(name));
+                    reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn unlink(
@@ -202,13 +236,17 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyEmpty,
     ) {
         if let Some(parent_path) = self.tree.get_path(parent) {
-            if let Ok(()) = self.fs.unlink(parent_path, name) {
+            if let Err(err) = self.fs.unlink(parent_path, name) {
+                tracing::error!("{err:?}");
+                reply.error(libc::EIO);
+            } else {
                 self.tree.remove(parent, name);
-                return reply.ok();
+                reply.ok();
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn rmdir(
@@ -219,19 +257,30 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyEmpty,
     ) {
         if let Some(parent_path) = self.tree.get_path(parent) {
-            if let Ok(entries) = self.fs.dir_entries(parent_path.join(name)) {
-                if !entries.is_empty() {
-                    return reply.error(libc::ENOTEMPTY);
-                }
+            match self.fs.dir_entries(parent_path.join(name)) {
+                Ok(entries) => {
+                    if !entries.is_empty() {
+                        tracing::warn!("directory not empty");
+                        return reply.error(libc::ENOTEMPTY);
+                    }
 
-                if let Ok(()) = self.fs.rmdir(parent_path, name) {
-                    self.tree.remove(parent, name);
-                    return reply.ok();
+                    if let Err(err) = self.fs.rmdir(parent_path, name) {
+                        tracing::error!("{err:?}");
+                        reply.error(libc::EIO);
+                    } else {
+                        self.tree.remove(parent, name);
+                        reply.ok()
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
                 }
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn symlink(
@@ -243,13 +292,20 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            if let Ok(entry) = self.fs.symlink(&parent, link_name, target) {
-                let inode = self.tree.insert_path(parent.join(link_name));
-                return reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+            match self.fs.symlink(&parent, link_name, target) {
+                Ok(entry) => {
+                    let inode = self.tree.insert_path(parent.join(link_name));
+                    reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0)
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn rename(
@@ -264,37 +320,41 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     ) {
         if let Some(old_parent) = self.tree.get_path(parent) {
             if let Some(new_parent) = self.tree.get_path(newparent) {
-                if self
-                    .fs
-                    .rename(old_parent, name, new_parent, newname)
-                    .is_ok()
-                {
-                    self.tree.rename(parent, name, newparent, newname);
-                    return reply.ok();
+                if let Err(err) = self.fs.rename(old_parent, name, new_parent, newname) {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
                 } else {
-                    return reply.error(libc::EIO);
+                    self.tree.rename(parent, name, newparent, newname);
+                    reply.ok()
                 }
+            } else {
+                tracing::warn!(newparent, "new parent inode not found");
+                reply.error(libc::ENOENT);
             }
+        } else {
+            tracing::warn!(parent, "old parent inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
-            if path.parent().is_none() {
-                return reply.error(libc::EINVAL);
-            }
-
             // TODO: Maybe check flags and modify open options
-            if let Ok(stream) = self.fs.open_file(path) {
-                let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
-                self.file_handles.insert(fh, stream);
-                return reply.opened(fh, flags as u32);
+            match self.fs.open_file(path) {
+                Ok(stream) => {
+                    let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
+                    self.file_handles.insert(fh, stream);
+                    reply.opened(fh, flags as u32)
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn read(
@@ -322,16 +382,17 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                             return reply.error(libc::EIO);
                         }
                     }
-                    return reply.data(&buf);
+                    reply.data(&buf);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
-                    return reply.error(libc::EIO);
+                    reply.error(libc::EIO);
                 }
             }
+        } else {
+            tracing::warn!(fh, "file handle not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn release(
@@ -356,14 +417,21 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyOpen,
     ) {
         if let Some(path) = self.tree.get_path(ino) {
-            if let Ok(entries) = self.fs.dir_entries(path) {
-                self.dir_entries.insert(ino, entries);
-                // TODO: Do we need to allocate a file handle?
-                return reply.opened(0, flags as u32);
+            match self.fs.dir_entries(path) {
+                Ok(entries) => {
+                    self.dir_entries.insert(ino, entries);
+                    // TODO: Do we need to allocate a file handle?
+                    reply.opened(0, flags as u32);
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
             }
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn readdir(
@@ -385,10 +453,11 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 }
             }
 
-            return reply.ok();
+            reply.ok();
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
         }
-
-        reply.error(libc::ENOENT);
     }
 
     fn releasedir(
@@ -399,9 +468,11 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _flags: i32,
         reply: fuser::ReplyEmpty,
     ) {
-        match self.dir_entries.remove(&ino) {
-            Some(_) => reply.ok(),
-            None => reply.error(libc::ENOENT),
+        if self.dir_entries.remove(&ino).is_some() {
+            reply.ok()
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT)
         }
     }
 }

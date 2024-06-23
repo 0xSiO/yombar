@@ -341,9 +341,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         if let Some(path) = self.tree.get_path(ino) {
             // TODO: Maybe check flags and modify open options
             match self.fs.open_file(path) {
-                Ok(stream) => {
+                Ok(file) => {
                     let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
-                    self.file_handles.insert(fh, stream);
+                    self.file_handles.insert(fh, file);
                     reply.opened(fh, flags as u32)
                 }
                 Err(err) => {
@@ -368,13 +368,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(mut stream) = self.file_handles.get_mut(&fh) {
+        if let Some(mut file) = self.file_handles.get_mut(&fh) {
             debug_assert!(offset >= 0);
-            match stream.seek(SeekFrom::Start(offset as u64)) {
+            match file.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    match util::try_read_exact(&mut stream, &mut buf) {
+                    match util::try_read_exact(&mut file, &mut buf) {
                         Ok((false, n)) => buf.truncate(n),
                         Ok(_) => {}
                         Err(err) => {

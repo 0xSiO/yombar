@@ -15,6 +15,7 @@ use crate::{
     util, Result,
 };
 
+// TODO: Look into file locking for the underlying file (https://docs.rs/fd-lock)
 pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: File,

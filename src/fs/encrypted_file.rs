@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    collections::VecDeque,
     fmt::Debug,
     fs::File,
     io::{self, Read, Seek, SeekFrom, Write},
@@ -16,11 +15,12 @@ use crate::{
 };
 
 // TODO: Look into file locking for the underlying file (https://docs.rs/fd-lock)
+// TODO: Arithmetic for converting between cleartext/ciphertext byte positions may need to change
+// in the future if we add new cryptor types that change the length of encrypted/decrypted data.
 pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: File,
     header: FileHeader,
-    chunk_buffer: VecDeque<u8>,
 }
 
 impl<'k> EncryptedFile<'k> {
@@ -47,7 +47,6 @@ impl<'k> EncryptedFile<'k> {
             cryptor,
             file,
             header,
-            chunk_buffer: Default::default(),
         })
     }
 
@@ -83,43 +82,37 @@ impl<'k> Deref for EncryptedFile<'k> {
     }
 }
 
-// TODO: This implementation assumes the file position is always at a chunk boundary, which is no
-// longer the case with the new Write impl. This needs to be rewritten, probably without the chunk
-// buffer. Also take another look at the Seek impl to see if it's affected by the same issue.
 impl<'k> Read for EncryptedFile<'k> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.chunk_buffer.len() <= buf.len() {
-            // Try to fill up the buffer's remaining space as best we can
-            let chunks_to_read =
-                1.max((buf.len() - self.chunk_buffer.len()) / self.cryptor.max_chunk_len());
-
-            for _ in 0..chunks_to_read {
-                let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
-                match util::try_read_exact(&mut self.file, &mut ciphertext_chunk)? {
-                    // Got EOF immediately
-                    (false, 0) => break,
-                    // Got some data, then hit EOF
-                    (false, n) => ciphertext_chunk.truncate(n),
-                    // Got a whole chunk, no EOF
-                    _ => {}
-                }
-
-                // Find beginning of current chunk, ignore header, and divide by max chunk length
-                let ciphertext_pos = self.file.stream_position()? as usize;
-                let chunk_number = (ciphertext_pos
-                    .saturating_sub(ciphertext_chunk.len())
-                    .saturating_sub(self.cryptor.encrypted_header_len()))
-                    / self.cryptor.max_encrypted_chunk_len();
-
-                self.chunk_buffer.extend(
-                    self.cryptor
-                        .decrypt_chunk(ciphertext_chunk, &self.header, chunk_number)
-                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-                );
-            }
+        if buf.is_empty() || self.file.stream_position()? == self.file.metadata()?.len() {
+            return Ok(0);
         }
 
-        self.chunk_buffer.read(buf)
+        let max_chunk_len = self.cryptor.max_chunk_len();
+        let current_pos = self.cleartext_pos()? as usize;
+        let chunk_number = current_pos / max_chunk_len;
+        let chunk_offset = current_pos % max_chunk_len;
+        let chunk_start = chunk_number * max_chunk_len;
+
+        // Ensure we're positioned at a chunk boundary
+        if chunk_offset > 0 {
+            self.seek(SeekFrom::Start(chunk_start as u64))?;
+        }
+
+        let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
+        if let (false, n) = util::try_read_exact(&mut self.file, &mut ciphertext_chunk)? {
+            ciphertext_chunk.truncate(n)
+        }
+
+        let chunk = self
+            .cryptor
+            .decrypt_chunk(ciphertext_chunk, &self.header, chunk_number)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        let bytes_read = (&chunk[chunk_offset..]).read(buf)?;
+        self.seek(SeekFrom::Start((current_pos + bytes_read) as u64))?;
+
+        Ok(bytes_read)
     }
 }
 
@@ -131,22 +124,22 @@ impl<'k> Seek for EncryptedFile<'k> {
                     return Ok(n);
                 }
 
-                // We're moving somewhere else, so forget the current chunk buffer
-                self.chunk_buffer.clear();
+                let chunk_number = n / (self.cryptor.max_chunk_len() as u64);
+                let chunk_offset = n % (self.cryptor.max_chunk_len() as u64);
+                let mut desired_pos = (self.cryptor.encrypted_header_len() as u64)
+                    + chunk_number * (self.cryptor.max_encrypted_chunk_len() as u64);
 
-                // Move to the beginning of the appropriate ciphertext chunk, maxing out at the end
-                // of the ciphertext file
-                let enc_chunk_start = self.cryptor.encrypted_header_len()
-                    + (n as usize / self.cryptor.max_chunk_len()
-                        * self.cryptor.max_encrypted_chunk_len());
-                let new_ciphertext_pos = (enc_chunk_start as u64).min(self.file.metadata()?.len());
+                // Skip chunk header if desired position is partway through a chunk
+                if chunk_offset > 0 {
+                    desired_pos += chunk_offset
+                        + (self.cryptor.max_encrypted_chunk_len() - self.cryptor.max_chunk_len())
+                            as u64;
+                }
+
+                // Cap the seek to the end of the ciphertext file
+                let new_ciphertext_pos = desired_pos.min(self.file.metadata()?.len());
                 self.file.seek(SeekFrom::Start(new_ciphertext_pos))?;
-
-                // Skip some bytes to move to the final position within the chunk
-                let remainder = n as usize % self.cryptor.max_chunk_len();
-                self.read_exact(&mut vec![0; remainder])?;
-
-                Ok(n)
+                self.cleartext_pos()
             }
             SeekFrom::End(n) => {
                 let cleartext_size = self.cleartext_size()?;

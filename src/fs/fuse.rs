@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs::Permissions,
-    io::{Seek, SeekFrom},
+    io::{Seek, SeekFrom, Write},
     os::unix::{
         ffi::OsStrExt,
         fs::{MetadataExt, PermissionsExt},
@@ -368,13 +368,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(mut file) = self.open_files.get_mut(&fh) {
+        if let Some(file) = self.open_files.get_mut(&fh) {
             debug_assert!(offset >= 0);
             match file.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
                     debug_assert_eq!(pos, offset as u64);
                     let mut buf = vec![0_u8; size as usize];
-                    match util::try_read_exact(&mut file, &mut buf) {
+                    match util::try_read_exact(file, &mut buf) {
                         Ok((false, n)) => buf.truncate(n),
                         Ok(_) => {}
                         Err(err) => {
@@ -383,6 +383,43 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                         }
                     }
                     reply.data(&buf);
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
+            }
+        } else {
+            tracing::warn!(fh, "file handle not found");
+            reply.error(libc::ENOENT);
+        }
+    }
+
+    fn write(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _ino: u64,
+        fh: u64,
+        offset: i64,
+        data: &[u8],
+        _write_flags: u32,
+        _flags: i32,
+        _lock_owner: Option<u64>,
+        reply: fuser::ReplyWrite,
+    ) {
+        if let Some(file) = self.open_files.get_mut(&fh) {
+            debug_assert!(offset >= 0);
+            match file.seek(SeekFrom::Start(offset as u64)) {
+                Ok(pos) => {
+                    debug_assert_eq!(pos, offset as u64);
+                    match file.write_all(data) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            tracing::error!("{err:?}");
+                            return reply.error(libc::EIO);
+                        }
+                    }
+                    reply.written(data.len() as u32);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");

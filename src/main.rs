@@ -29,6 +29,7 @@ pub fn main() -> Result<()> {
         &[
             // MountOption::RO,
             MountOption::FSName(String::from("example-fs")),
+            MountOption::DefaultPermissions,
         ],
     )?;
 

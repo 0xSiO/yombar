@@ -153,6 +153,16 @@ impl<'k> EncryptedFile<'k> {
         // underlying file it makes sense to do so
         Ok(self.file.try_write()?.set_permissions(perm)?)
     }
+
+    /// Sync ciphertext file content and metadata to disk.
+    pub fn sync_all(&mut self) -> Result<()> {
+        Ok(self.file.try_write()?.sync_all()?)
+    }
+
+    /// Sync ciphertext file content to disk, but maybe not metadata.
+    pub fn sync_data(&mut self) -> Result<()> {
+        Ok(self.file.try_write()?.sync_data()?)
+    }
 }
 
 impl<'k> Read for EncryptedFile<'k> {

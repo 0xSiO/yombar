@@ -432,6 +432,27 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         }
     }
 
+    fn flush(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _ino: u64,
+        fh: u64,
+        _lock_owner: u64,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(file) = self.open_files.get_mut(&fh) {
+            if let Err(err) = file.flush() {
+                tracing::error!("{err:?}");
+                reply.error(libc::EIO);
+            } else {
+                reply.ok();
+            }
+        } else {
+            tracing::warn!(fh, "file handle not found");
+            reply.error(libc::ENOENT);
+        }
+    }
+
     fn release(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -444,6 +465,33 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     ) {
         self.open_files.remove(&fh);
         reply.ok();
+    }
+
+    fn fsync(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _ino: u64,
+        fh: u64,
+        datasync: bool,
+        reply: fuser::ReplyEmpty,
+    ) {
+        if let Some(file) = self.open_files.get_mut(&fh) {
+            let result = if datasync {
+                file.sync_data()
+            } else {
+                file.sync_all()
+            };
+
+            if let Err(err) = result {
+                tracing::error!("{err:?}");
+                reply.error(libc::EIO);
+            } else {
+                reply.ok();
+            }
+        } else {
+            tracing::warn!(fh, "file handle not found");
+            reply.error(libc::ENOENT);
+        }
     }
 
     fn opendir(

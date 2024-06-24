@@ -638,4 +638,18 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             reply.error(libc::ENOENT)
         }
     }
+
+    // TODO: Consider implementing create(), the file open flags seem to be different in certain
+    // cases (like when force writing to a read-only file w/ vim)
+    // fn create(
+    //     &mut self,
+    //     _req: &fuser::Request<'_>,
+    //     parent: u64,
+    //     name: &std::ffi::OsStr,
+    //     mode: u32,
+    //     umask: u32,
+    //     flags: i32,
+    //     reply: fuser::ReplyCreate,
+    // ) {
+    // }
 }

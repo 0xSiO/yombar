@@ -14,7 +14,6 @@ use crate::{
     util, Result,
 };
 
-// TODO: Look into file locking for the underlying file (https://docs.rs/fd-lock)
 // TODO: Arithmetic for converting between cleartext/ciphertext byte positions may need to change
 // in the future if we add new cryptor types that change the length of encrypted/decrypted data.
 pub struct EncryptedFile<'k> {

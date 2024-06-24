@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fs::Permissions,
     io::{Seek, SeekFrom},
     os::unix::{
@@ -69,9 +69,9 @@ impl From<Attributes> for FileAttr {
 pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     tree: DirTree,
-    dir_entries: HashMap<Inode, BTreeMap<PathBuf, DirEntry>>,
-    file_handles: HashMap<u64, EncryptedFile<'v>>,
-    next_file_handle: AtomicU64,
+    open_dirs: BTreeMap<u64, BTreeMap<PathBuf, DirEntry>>,
+    open_files: BTreeMap<u64, EncryptedFile<'v>>,
+    next_handle: AtomicU64,
 }
 
 impl<'v> FuseFileSystem<'v> {
@@ -79,9 +79,9 @@ impl<'v> FuseFileSystem<'v> {
         Self {
             fs,
             tree: DirTree::new(),
-            dir_entries: Default::default(),
-            file_handles: Default::default(),
-            next_file_handle: AtomicU64::new(0),
+            open_dirs: Default::default(),
+            open_files: Default::default(),
+            next_handle: AtomicU64::new(0),
         }
     }
 }
@@ -342,8 +342,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             // TODO: Maybe check flags and modify open options
             match self.fs.open_file(path) {
                 Ok(file) => {
-                    let fh = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
-                    self.file_handles.insert(fh, file);
+                    let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
+                    self.open_files.insert(fh, file);
                     reply.opened(fh, flags as u32)
                 }
                 Err(err) => {
@@ -368,7 +368,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some(mut file) = self.file_handles.get_mut(&fh) {
+        if let Some(mut file) = self.open_files.get_mut(&fh) {
             debug_assert!(offset >= 0);
             match file.seek(SeekFrom::Start(offset as u64)) {
                 Ok(pos) => {
@@ -405,7 +405,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _flush: bool,
         reply: fuser::ReplyEmpty,
     ) {
-        self.file_handles.remove(&fh);
+        self.open_files.remove(&fh);
         reply.ok();
     }
 
@@ -419,9 +419,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         if let Some(path) = self.tree.get_path(ino) {
             match self.fs.dir_entries(path) {
                 Ok(entries) => {
-                    self.dir_entries.insert(ino, entries);
-                    // TODO: Do we need to allocate a file handle?
-                    reply.opened(0, flags as u32);
+                    let handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
+                    self.open_dirs.insert(handle, entries);
+                    reply.opened(handle, flags as u32);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
@@ -437,12 +437,12 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn readdir(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
-        _fh: u64,
+        _ino: u64,
+        fh: u64,
         offset: i64,
         mut reply: fuser::ReplyDirectory,
     ) {
-        if let Some(entries) = self.dir_entries.get(&ino) {
+        if let Some(entries) = self.open_dirs.get(&fh) {
             for (i, (path, dir_entry)) in entries.iter().enumerate().skip(offset as usize) {
                 let name = path.file_name().unwrap().to_os_string();
                 let inode = self.tree.insert_path(path);
@@ -455,7 +455,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
             reply.ok();
         } else {
-            tracing::warn!(ino, "inode not found");
+            tracing::warn!(fh, "dir handle not found");
             reply.error(libc::ENOENT);
         }
     }
@@ -463,15 +463,15 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn releasedir(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
-        _fh: u64,
+        _ino: u64,
+        fh: u64,
         _flags: i32,
         reply: fuser::ReplyEmpty,
     ) {
-        if self.dir_entries.remove(&ino).is_some() {
+        if self.open_dirs.remove(&fh).is_some() {
             reply.ok()
         } else {
-            tracing::warn!(ino, "inode not found");
+            tracing::warn!(fh, "dir handle not found");
             reply.error(libc::ENOENT)
         }
     }

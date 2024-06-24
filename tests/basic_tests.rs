@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fs::{self, File},
     io::{Read, Seek, Write},
     path::PathBuf,
     str::FromStr,
@@ -99,7 +99,7 @@ pub fn siv_ctrmac_basic() {
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "8OHhIeke26MS1E8KnbjGJqDyrZorAAxvNRrmZUqdHPTSpu42TXT4dFT5qbrd57PEaYUilUK9tAwD3gKNTWg9fmLvehEWBqDey+8FPgp4lUOkUlViiv1Q+aW+6cesIXIP/e9Hbi/rPUxjWnfHsKRLyzUyzHc+tU3DVZeKjMJnXoWWNqifsOnVFPeQPMjFpJ5h0mJWhUmuzSu+mWSeKGsPeT2GT5FkpD5hawtXD/q0WPyQ"
+        "0HtXhtsJDgIA4uDKS3PrXnVv4Nnn0ZbuJRWV35QQzGHM/8JjmEDXKgrYauFcj9WgFihKEYJLzzGae/jxCtQqloI3jvmhSc86LvBL7qKjV/O98nsPQoqBiBYrg9yKuhZOqC2xFK/TqohR/eSuIuRnmlKodNy9TTa8CDd5fVVh0zZDHfG63d4qoKeAtPXxyRQ7ConN+4iN4qToWz7xrOT++ptUUUQKzg4WN+DInMfPzTlU"
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..88]).unwrap();
@@ -162,6 +162,7 @@ pub fn siv_ctrmac_basic() {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+        File::options().read(true).clone()
     )
     .unwrap();
 
@@ -173,6 +174,7 @@ pub fn siv_ctrmac_basic() {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
+        File::options().read(true).clone()
     )
     .unwrap();
 
@@ -377,6 +379,7 @@ pub fn siv_gcm_basic() {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
+        File::options().read(true).clone()
     )
     .unwrap();
 
@@ -388,6 +391,7 @@ pub fn siv_gcm_basic() {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r",
+        File::options().read(true).clone()
     )
     .unwrap();
 

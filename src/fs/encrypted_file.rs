@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fmt::Debug,
-    fs::{File, Metadata, OpenOptions, Permissions},
+    fs::{File, Metadata, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
 };
@@ -147,13 +147,6 @@ impl<'k> EncryptedFile<'k> {
     /// Fetch the metadata of the underlying ciphertext file.
     pub fn metadata(&self) -> Result<Metadata> {
         Ok(self.file.try_read()?.metadata()?)
-    }
-
-    /// Set the permissions of the underlying ciphertext file.
-    pub fn set_permissions(&mut self, perm: Permissions) -> Result<()> {
-        // set_permissions doesn't actually require a &mut File, but since we are modifying the
-        // underlying file it makes sense to do so
-        Ok(self.file.try_write()?.set_permissions(perm)?)
     }
 
     /// Sync ciphertext file content and metadata to disk.

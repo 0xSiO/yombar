@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    fs::{OpenOptions, Permissions},
+    fs::{FileTimes, OpenOptions, Permissions},
     io::{Seek, SeekFrom, Write},
     os::unix::{
         ffi::OsStrExt,
@@ -8,7 +8,7 @@ use std::{
     },
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
@@ -142,6 +142,73 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                         },
                     }),
                 );
+            }
+
+            match self.fs.dir_entry(path) {
+                Ok(entry) => {
+                    reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
+            }
+        } else {
+            tracing::warn!(ino, "inode not found");
+            reply.error(libc::ENOENT);
+        }
+    }
+
+    fn setattr(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: u64,
+        mode: Option<u32>,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+        // TODO: Support truncation via size
+        _size: Option<u64>,
+        atime: Option<fuser::TimeOrNow>,
+        mtime: Option<fuser::TimeOrNow>,
+        // TODO: Support ctime and other timestamps?
+        _ctime: Option<std::time::SystemTime>,
+        _fh: Option<u64>,
+        _crtime: Option<std::time::SystemTime>,
+        _chgtime: Option<std::time::SystemTime>,
+        _bkuptime: Option<std::time::SystemTime>,
+        _flags: Option<u32>,
+        reply: fuser::ReplyAttr,
+    ) {
+        if let Some(path) = self.tree.get_path(ino) {
+            if path.parent().is_none() {
+                // TODO: Should we change root dir metadata?
+                return reply.error(libc::ENOTSUP);
+            }
+
+            if let Some(mode) = mode {
+                if let Err(err) = self.fs.set_permissions(&path, Permissions::from_mode(mode)) {
+                    tracing::error!("{err:?}");
+                    return reply.error(libc::EIO);
+                }
+            }
+
+            let mut times = FileTimes::new();
+            if let Some(atime) = atime {
+                match atime {
+                    fuser::TimeOrNow::SpecificTime(t) => times = times.set_accessed(t),
+                    fuser::TimeOrNow::Now => times = times.set_accessed(SystemTime::now()),
+                };
+            }
+            if let Some(mtime) = mtime {
+                match mtime {
+                    fuser::TimeOrNow::SpecificTime(t) => times = times.set_modified(t),
+                    fuser::TimeOrNow::Now => times = times.set_modified(SystemTime::now()),
+                };
+            }
+
+            if let Err(err) = self.fs.set_times(&path, times) {
+                tracing::error!("{err:?}");
+                return reply.error(libc::EIO);
             }
 
             match self.fs.dir_entry(path) {

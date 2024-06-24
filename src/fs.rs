@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fmt::Debug,
-    fs::{self, Metadata, OpenOptions, Permissions},
+    fs::{self, File, FileTimes, Metadata, OpenOptions, Permissions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
@@ -368,8 +368,8 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        let mut file = EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path)?;
-        file.set_permissions(permissions)?;
+        let file = EncryptedFile::create_new(self.vault.cryptor(), &ciphertext_path)?;
+        fs::set_permissions(ciphertext_path, permissions)?;
 
         Ok(DirEntry {
             kind: FileKind::File,
@@ -469,5 +469,86 @@ impl<'v> EncryptedFileSystem<'v> {
             .translator
             .get_ciphertext_path(parent.as_ref().join(name), parent_dir_id)?;
         Ok(fs::remove_dir_all(ciphertext_path)?)
+    }
+
+    fn set_permissions(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        permissions: Permissions,
+    ) -> Result<()> {
+        let entry = self.dir_entry(&cleartext_path)?;
+
+        match entry.kind {
+            FileKind::File => {
+                let parent_dir_id = self
+                    .translator
+                    .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
+                let mut ciphertext_path = self
+                    .translator
+                    .get_ciphertext_path(&cleartext_path, parent_dir_id)?;
+
+                if ciphertext_path.is_dir() && ciphertext_path.join("contents.c9r").is_file() {
+                    ciphertext_path = ciphertext_path.join("contents.c9r");
+                }
+
+                fs::set_permissions(ciphertext_path, permissions)?;
+            }
+            FileKind::Directory => {
+                let dir_id = self.translator.get_dir_id(&cleartext_path)?;
+                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+                fs::set_permissions(self.vault.path().join("d").join(hashed_dir_id), permissions)?;
+            }
+            FileKind::Symlink => {
+                let parent_dir_id = self
+                    .translator
+                    .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
+                let ciphertext_path = self
+                    .translator
+                    .get_ciphertext_path(&cleartext_path, parent_dir_id)?;
+                fs::set_permissions(ciphertext_path.join("symlink.c9r"), permissions)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_times(&self, cleartext_path: impl AsRef<Path>, times: FileTimes) -> Result<()> {
+        let entry = self.dir_entry(&cleartext_path)?;
+
+        match entry.kind {
+            FileKind::File => {
+                let parent_dir_id = self
+                    .translator
+                    .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
+                let mut ciphertext_path = self
+                    .translator
+                    .get_ciphertext_path(&cleartext_path, parent_dir_id)?;
+
+                if ciphertext_path.is_dir() && ciphertext_path.join("contents.c9r").is_file() {
+                    ciphertext_path = ciphertext_path.join("contents.c9r");
+                }
+
+                let file = File::open(ciphertext_path)?;
+                file.set_times(times)?;
+            }
+            FileKind::Directory => {
+                // let dir_id = self.translator.get_dir_id(&cleartext_path)?;
+                // let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+                bail!("not yet implemented");
+            }
+            FileKind::Symlink => {
+                let parent_dir_id = self
+                    .translator
+                    .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
+                let ciphertext_path = self
+                    .translator
+                    .get_ciphertext_path(&cleartext_path, parent_dir_id)?;
+
+                let file = File::open(ciphertext_path.join("symlink.c9r"))?;
+                file.set_times(times)?;
+            }
+        }
+
+        Ok(())
     }
 }

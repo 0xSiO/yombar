@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fmt::Debug,
-    fs::{self, Metadata, Permissions},
+    fs::{self, Metadata, OpenOptions, Permissions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
@@ -15,7 +15,6 @@ mod translator;
 
 use color_eyre::eyre::bail;
 pub use encrypted_file::EncryptedFile;
-use tracing::instrument;
 use translator::Translator;
 use uuid::Uuid;
 
@@ -134,7 +133,6 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    #[instrument(skip(self))]
     fn link_target(&self, cleartext_path: impl AsRef<Path> + Debug) -> Result<PathBuf> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let ciphertext_path = self
@@ -144,7 +142,9 @@ impl<'v> EncryptedFileSystem<'v> {
 
         if ciphertext_path.is_file() {
             let mut decrypted = String::new();
-            EncryptedFile::open(self.vault.cryptor(), ciphertext_path)?
+            let mut options = OpenOptions::new();
+            options.read(true);
+            EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)?
                 .read_to_string(&mut decrypted)?;
 
             return Ok(decrypted.into());
@@ -153,7 +153,11 @@ impl<'v> EncryptedFileSystem<'v> {
         Err(io::Error::new(io::ErrorKind::InvalidData, "not a link").into())
     }
 
-    fn open_file(&self, cleartext_path: impl AsRef<Path>) -> Result<EncryptedFile<'v>> {
+    fn open_file(
+        &self,
+        cleartext_path: impl AsRef<Path>,
+        options: OpenOptions,
+    ) -> Result<EncryptedFile<'v>> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let mut ciphertext_path = self
             .translator
@@ -163,7 +167,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        EncryptedFile::open(self.vault.cryptor(), ciphertext_path)
+        EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)
     }
 
     fn rename_file(
@@ -344,7 +348,6 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    #[instrument(skip(self))]
     fn mknod(
         &self,
         parent: impl AsRef<Path> + Debug,

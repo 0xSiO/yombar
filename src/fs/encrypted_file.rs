@@ -1,13 +1,12 @@
 use std::{
     cmp::Ordering,
     fmt::Debug,
-    fs::{File, Metadata, Permissions},
+    fs::{File, Metadata, OpenOptions, Permissions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
 use fd_lock::RwLock;
-use tracing::instrument;
 
 use crate::{
     crypto::{Cryptor, FileCryptor, FileHeader},
@@ -23,27 +22,19 @@ pub struct EncryptedFile<'k> {
 }
 
 impl<'k> EncryptedFile<'k> {
-    /// Open an existing encrypted file in read-write mode.
-    #[instrument]
-    pub fn open(cryptor: Cryptor<'k>, path: impl AsRef<Path> + Debug) -> Result<Self> {
-        let mut file = RwLock::new(File::options().read(true).write(true).open(path)?);
-        let mut guard = file.try_write()?;
+    /// Open an existing encrypted file at the provided path, using the provided options.
+    pub fn open(
+        cryptor: Cryptor<'k>,
+        path: impl AsRef<Path> + Debug,
+        options: OpenOptions,
+    ) -> Result<Self> {
+        let file = RwLock::new(options.open(path)?);
 
+        // Read and decrypt the file header - error if header is missing/invalid
+        let guard = file.try_read()?;
         let mut encrypted_header = vec![0; cryptor.encrypted_header_len()];
-        let header = match guard.read_exact(&mut encrypted_header) {
-            // Decrypt the file header if it exists
-            Ok(_) => cryptor.decrypt_header(encrypted_header)?,
-            // Otherwise, write a new one
-            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => {
-                let header = cryptor.new_header()?;
-                let header_bytes = cryptor.encrypt_header(&header)?;
-                guard.write_all(&header_bytes)?;
-                guard.sync_all()?;
-                header
-            }
-            Err(err) => Err(err)?,
-        };
-
+        (&*guard).read_exact(&mut encrypted_header)?;
+        let header = cryptor.decrypt_header(encrypted_header)?;
         drop(guard);
 
         Ok(Self {
@@ -54,10 +45,21 @@ impl<'k> EncryptedFile<'k> {
     }
 
     /// Create a new encrypted file in read-write mode; error if the file exists.
-    #[instrument]
     pub fn create_new(cryptor: Cryptor<'k>, path: impl AsRef<Path> + Debug) -> Result<Self> {
-        File::create_new(&path)?;
-        Self::open(cryptor, path)
+        let mut file = RwLock::new(File::create_new(&path)?);
+
+        // Write a header in the new file
+        let guard = file.try_write()?;
+        let header = cryptor.new_header()?;
+        let header_bytes = cryptor.encrypt_header(&header)?;
+        (&*guard).write_all(&header_bytes)?;
+        guard.sync_all()?;
+        drop(guard);
+
+        // Now that the file is created, open it normally for reading/writing
+        let mut options = OpenOptions::new();
+        options.read(true).write(true);
+        Self::open(cryptor, path, options)
     }
 
     // Fetch the current byte position in the underlying ciphertext file.

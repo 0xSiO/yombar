@@ -1,10 +1,10 @@
 use std::{
     collections::BTreeMap,
-    fs::Permissions,
+    fs::{OpenOptions, Permissions},
     io::{Seek, SeekFrom, Write},
     os::unix::{
         ffi::OsStrExt,
-        fs::{MetadataExt, PermissionsExt},
+        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -339,8 +339,19 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
-            // TODO: Maybe check flags and modify open options
-            match self.fs.open_file(path) {
+            // We'll support opening files in either read mode or read-write mode
+            let mut options = OpenOptions::new();
+            options.read(true);
+            options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
+            options.custom_flags(flags);
+
+            // TODO: Look into supporting append (will likely just use read-write under the hood)
+            if flags & libc::O_APPEND > 0 {
+                tracing::warn!("opening files in append mode not supported");
+                return reply.error(libc::EINVAL);
+            }
+
+            match self.fs.open_file(path, options) {
                 Ok(file) => {
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);

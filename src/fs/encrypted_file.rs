@@ -38,6 +38,7 @@ impl<'k> EncryptedFile<'k> {
                 let header = cryptor.new_header()?;
                 let header_bytes = cryptor.encrypt_header(&header)?;
                 guard.write_all(&header_bytes)?;
+                guard.sync_all()?;
                 header
             }
             Err(err) => Err(err)?,

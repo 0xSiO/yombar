@@ -19,6 +19,7 @@ pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: RwLock<File>,
     header: FileHeader,
+    append: bool,
 }
 
 impl<'k> EncryptedFile<'k> {
@@ -41,6 +42,7 @@ impl<'k> EncryptedFile<'k> {
             cryptor,
             file,
             header,
+            append: false,
         })
     }
 
@@ -60,6 +62,10 @@ impl<'k> EncryptedFile<'k> {
         let mut options = OpenOptions::new();
         options.read(true).write(true);
         Self::open(cryptor, path, options)
+    }
+
+    pub(crate) fn set_append(&mut self, append: bool) {
+        self.append = append;
     }
 
     // Fetch the current byte position in the underlying ciphertext file.
@@ -213,6 +219,13 @@ impl<'k> Write for EncryptedFile<'k> {
 
         if buf.is_empty() {
             return Ok(0);
+        }
+
+        // TODO: Maybe there's a more elegant way of implementing this 'append mode'
+        if self.append {
+            // If we're in append mode, we can skip to the end of the file while we hold the
+            // exclusive lock, which should be safe
+            (&*guard).seek(SeekFrom::End(0))?;
         }
 
         let max_chunk_len = self.cryptor.max_chunk_len();

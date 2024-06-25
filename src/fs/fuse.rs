@@ -412,13 +412,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
             options.custom_flags(flags);
 
-            // TODO: Look into supporting append (will likely just use read-write under the hood)
-            if flags & libc::O_APPEND > 0 {
-                tracing::warn!("opening files in append mode not supported");
-                return reply.error(libc::EINVAL);
-            }
-
-            match self.fs.open_file(path, options) {
+            // Append mode is technically supported, but kind of through a hack
+            match self.fs.open_file(path, options, flags & libc::O_APPEND > 0) {
                 Ok(file) => {
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);

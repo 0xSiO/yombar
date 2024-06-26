@@ -634,17 +634,65 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         }
     }
 
-    // TODO: Consider implementing create(), the file open flags seem to be different in certain
-    // cases (like when force writing to a read-only file w/ vim)
-    // fn create(
-    //     &mut self,
-    //     _req: &fuser::Request<'_>,
-    //     parent: u64,
-    //     name: &std::ffi::OsStr,
-    //     mode: u32,
-    //     umask: u32,
-    //     flags: i32,
-    //     reply: fuser::ReplyCreate,
-    // ) {
-    // }
+    // TODO: Check mode/umask are being used correctly here and elsewhere
+    // TODO: echo "a" > new_file will cause a crash (subtract with overflow), maybe enforce
+    //       invariants a bit better
+    // TODO: Read up on these, and other calls for more info
+    //   - https://www.gnu.org/software/libc/manual/html_node/Opening-and-Closing-Files.html
+    //   - https://www.man7.org/linux/man-pages/man2/open.2.html
+    fn create(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        mode: u32,
+        umask: u32,
+        flags: i32,
+        reply: fuser::ReplyCreate,
+    ) {
+        if let Some(parent) = self.tree.get_path(parent) {
+            match self
+                .fs
+                .mknod(&parent, name, Permissions::from_mode(mode & !umask))
+            {
+                Ok(entry) => {
+                    let inode = self.tree.insert_path(parent.join(name));
+
+                    // We'll support opening files in either read mode or read-write mode
+                    let mut options = OpenOptions::new();
+                    options.read(true);
+                    options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
+
+                    // Append mode is technically supported, but kind of through a hack
+                    match self
+                        .fs
+                        .open_file(parent.join(name), options, flags & libc::O_APPEND > 0)
+                    {
+                        Ok(file) => {
+                            let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
+                            self.open_files.insert(fh, file);
+                            reply.created(
+                                &TTL,
+                                &FileAttr::from(Attributes { inode, entry }),
+                                0,
+                                fh,
+                                flags as u32,
+                            );
+                        }
+                        Err(err) => {
+                            tracing::error!("{err:?}");
+                            reply.error(libc::EIO);
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("{err:?}");
+                    reply.error(libc::EIO);
+                }
+            }
+        } else {
+            tracing::warn!(parent, "parent inode not found");
+            reply.error(libc::ENOENT);
+        }
+    }
 }

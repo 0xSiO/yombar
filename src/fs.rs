@@ -147,10 +147,10 @@ impl<'v> EncryptedFileSystem<'v> {
             EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)?
                 .read_to_string(&mut decrypted)?;
 
-            return Ok(decrypted.into());
+            Ok(decrypted.into())
+        } else {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "not a link").into())
         }
-
-        Err(io::Error::new(io::ErrorKind::InvalidData, "not a link").into())
     }
 
     fn open_file(

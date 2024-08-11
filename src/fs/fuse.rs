@@ -247,12 +247,15 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         parent: u64,
         name: &std::ffi::OsStr,
         mode: u32,
-        _umask: u32,
+        umask: u32,
         _rdev: u32,
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            match self.fs.mknod(&parent, name, Permissions::from_mode(mode)) {
+            match self
+                .fs
+                .mknod(&parent, name, Permissions::from_mode(mode & !umask))
+            {
                 Ok(entry) => {
                     let inode = self.tree.insert_path(parent.join(name));
                     reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
@@ -274,12 +277,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         parent: u64,
         name: &std::ffi::OsStr,
         mode: u32,
-        // TODO: Use umask?
-        _umask: u32,
+        umask: u32,
         reply: fuser::ReplyEntry,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            match self.fs.mkdir(&parent, name, Permissions::from_mode(mode)) {
+            match self
+                .fs
+                .mkdir(&parent, name, Permissions::from_mode(mode & !umask))
+            {
                 Ok(entry) => {
                     let inode = self.tree.insert_path(parent.join(name));
                     reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
@@ -521,8 +526,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 reply.ok();
             }
         } else {
-            tracing::warn!(fh, "file handle not found");
-            reply.error(libc::ENOENT);
+            tracing::warn!(fh, "invalid file handle");
+            reply.error(libc::ESTALE);
         }
     }
 
@@ -562,8 +567,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 reply.ok();
             }
         } else {
-            tracing::warn!(fh, "file handle not found");
-            reply.error(libc::ENOENT);
+            tracing::warn!(fh, "invalid file handle");
+            reply.error(libc::ESTALE);
         }
     }
 
@@ -604,8 +609,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             for (i, (path, dir_entry)) in entries.iter().enumerate().skip(offset as usize) {
                 let name = path.file_name().unwrap().to_os_string();
                 let inode = self.tree.insert_path(path);
-
-                // i + 1 means the index of the next entry
                 if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
                     break;
                 }
@@ -613,8 +616,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
             reply.ok();
         } else {
-            tracing::warn!(fh, "dir handle not found");
-            reply.error(libc::ENOENT);
+            tracing::warn!(fh, "invalid dir handle");
+            reply.error(libc::ESTALE);
         }
     }
 
@@ -626,12 +629,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         _flags: i32,
         reply: fuser::ReplyEmpty,
     ) {
-        if self.open_dirs.remove(&fh).is_some() {
-            reply.ok()
-        } else {
-            tracing::warn!(fh, "dir handle not found");
-            reply.error(libc::ENOENT)
-        }
+        self.open_dirs.remove(&fh);
+        reply.ok();
     }
 
     // TODO: Check mode/umask are being used correctly here and elsewhere

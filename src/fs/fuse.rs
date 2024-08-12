@@ -633,9 +633,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
-    // TODO: Check mode/umask are being used correctly here and elsewhere
-    // TODO: echo "a" > new_file will cause a crash (subtract with overflow), maybe enforce
-    //       invariants a bit better
+    // TODO: neovim leaving behind temp files on write (4913, 5036, etc.), not being unlinked for
+    //       some reason. See https://github.com/neovim/neovim/blob/release-0.10/src/nvim/bufwrite.c#L750
     // TODO: Read up on these, and other calls for more info
     //   - https://www.gnu.org/software/libc/manual/html_node/Opening-and-Closing-Files.html
     //   - https://www.man7.org/linux/man-pages/man2/open.2.html
@@ -650,10 +649,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyCreate,
     ) {
         if let Some(parent) = self.tree.get_path(parent) {
-            match self
-                .fs
-                .mknod(&parent, name, Permissions::from_mode(mode & !umask))
-            {
+            // Permit reads/writes initially, at least until the file descriptor is created
+            match self.fs.mknod(
+                &parent,
+                name,
+                Permissions::from_mode(
+                    libc::S_IRUSR | libc::S_IWUSR | libc::S_IRGRP | libc::S_IWGRP,
+                ),
+            ) {
                 Ok(entry) => {
                     let inode = self.tree.insert_path(parent.join(name));
 
@@ -668,6 +671,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                         .open_file(parent.join(name), options, flags & libc::O_APPEND > 0)
                     {
                         Ok(file) => {
+                            // Set the correct access mode now that we have a file descriptor
+                            self.fs
+                                .set_permissions(
+                                    parent.join(name),
+                                    Permissions::from_mode(mode & !umask),
+                                )
+                                .unwrap();
+
                             let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                             self.open_files.insert(fh, file);
                             reply.created(

@@ -4,7 +4,7 @@ use std::{
     io::{Seek, SeekFrom, Write},
     os::unix::{
         ffi::OsStrExt,
-        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        fs::{MetadataExt, PermissionsExt},
     },
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -415,7 +415,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             let mut options = OpenOptions::new();
             options.read(true);
             options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
-            options.custom_flags(flags);
 
             // Append mode is technically supported, but kind of through a hack
             match self.fs.open_file(path, options, flags & libc::O_APPEND > 0) {
@@ -635,6 +634,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     // TODO: neovim leaving behind temp files on write (4913, 5036, etc.), not being unlinked for
     //       some reason. See https://github.com/neovim/neovim/blob/release-0.10/src/nvim/bufwrite.c#L750
+    //       Same issue with GNOME text editor too. Possibly related: setattr isn't fully
+    //       implemented, perhaps that's causing issues
     // TODO: Read up on these, and other calls for more info
     //   - https://www.gnu.org/software/libc/manual/html_node/Opening-and-Closing-Files.html
     //   - https://www.man7.org/linux/man-pages/man2/open.2.html

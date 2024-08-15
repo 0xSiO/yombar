@@ -415,9 +415,10 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             options.read(true);
             options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
 
-            // Append mode is technically supported, but kind of through a hack
-            match self.fs.open_file(path, options, flags & libc::O_APPEND > 0) {
-                Ok(file) => {
+            match self.fs.open_file(path, options) {
+                Ok(mut file) => {
+                    // Append mode is technically supported, but kind of through a hack
+                    file.set_append(flags & libc::O_APPEND > 0);
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);
                     reply.opened(fh, flags as u32)
@@ -658,25 +659,23 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 ),
             ) {
                 Ok(entry) => {
-                    let inode = self.tree.insert_path(parent.join(name));
+                    let path = parent.join(name);
+                    let inode = self.tree.insert_path(&path);
 
                     // We'll support opening files in either read mode or read-write mode
                     let mut options = OpenOptions::new();
                     options.read(true);
                     options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
+                    // TODO: Set any other custom flags in options?
 
-                    // Append mode is technically supported, but kind of through a hack
-                    match self
-                        .fs
-                        .open_file(parent.join(name), options, flags & libc::O_APPEND > 0)
-                    {
-                        Ok(file) => {
+                    match self.fs.open_file(&path, options) {
+                        Ok(mut file) => {
+                            // Append mode is technically supported, but kind of through a hack
+                            file.set_append(flags & libc::O_APPEND > 0);
+
                             // Set the correct access mode now that we have a file descriptor
                             self.fs
-                                .set_permissions(
-                                    parent.join(name),
-                                    Permissions::from_mode(mode & !umask),
-                                )
+                                .set_permissions(&path, Permissions::from_mode(mode & !umask))
                                 .unwrap();
 
                             let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);

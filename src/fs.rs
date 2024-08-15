@@ -157,7 +157,6 @@ impl<'v> EncryptedFileSystem<'v> {
         &self,
         cleartext_path: impl AsRef<Path>,
         options: OpenOptions,
-        append: bool,
     ) -> Result<EncryptedFile<'v>> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let mut ciphertext_path = self
@@ -168,10 +167,11 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        let mut file = EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)?;
-        file.set_append(append);
-
-        Ok(file)
+        Ok(EncryptedFile::open(
+            self.vault.cryptor(),
+            ciphertext_path,
+            options,
+        )?)
     }
 
     fn rename_file(

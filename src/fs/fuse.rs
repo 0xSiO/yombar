@@ -193,18 +193,17 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             }
 
             let mut times = FileTimes::new();
-            if let Some(atime) = atime {
-                match atime {
-                    fuser::TimeOrNow::SpecificTime(t) => times = times.set_accessed(t),
-                    fuser::TimeOrNow::Now => times = times.set_accessed(SystemTime::now()),
-                };
-            }
-            if let Some(mtime) = mtime {
-                match mtime {
-                    fuser::TimeOrNow::SpecificTime(t) => times = times.set_modified(t),
-                    fuser::TimeOrNow::Now => times = times.set_modified(SystemTime::now()),
-                };
-            }
+            let now = SystemTime::now();
+            match atime {
+                Some(fuser::TimeOrNow::SpecificTime(t)) => times = times.set_accessed(t),
+                Some(fuser::TimeOrNow::Now) => times = times.set_accessed(now),
+                None => {}
+            };
+            match mtime {
+                Some(fuser::TimeOrNow::SpecificTime(t)) => times = times.set_modified(t),
+                Some(fuser::TimeOrNow::Now) => times = times.set_modified(now),
+                None => {}
+            };
 
             if let Err(err) = self.fs.set_times(&path, times) {
                 tracing::error!("{err:?}");

@@ -446,10 +446,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyData,
     ) {
         if let Some(file) = self.open_files.get_mut(&fh) {
-            debug_assert!(offset >= 0);
+            if offset < 0 {
+                tracing::warn!(offset, "invalid file offset");
+                return reply.error(libc::EINVAL);
+            }
+
             match file.seek(SeekFrom::Start(offset as u64)) {
-                Ok(pos) => {
-                    debug_assert_eq!(pos, offset as u64);
+                Ok(pos) if pos == offset as u64 => {
                     let mut buf = vec![0_u8; size as usize];
                     match util::try_read_exact(file, &mut buf) {
                         Ok((false, n)) => buf.truncate(n),
@@ -460,6 +463,10 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                         }
                     }
                     reply.data(&buf);
+                }
+                Ok(pos) => {
+                    tracing::warn!(pos, offset, "failed to seek to requested offset");
+                    reply.error(libc::EIO);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
@@ -485,18 +492,22 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyWrite,
     ) {
         if let Some(file) = self.open_files.get_mut(&fh) {
-            debug_assert!(offset >= 0);
+            if offset < 0 {
+                tracing::warn!(offset, "invalid file offset");
+                return reply.error(libc::EINVAL);
+            }
+
             match file.seek(SeekFrom::Start(offset as u64)) {
-                Ok(pos) => {
-                    debug_assert_eq!(pos, offset as u64);
-                    match file.write_all(data) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            tracing::error!("{err:?}");
-                            return reply.error(libc::EIO);
-                        }
+                Ok(pos) if pos == offset as u64 => {
+                    if let Err(err) = file.write_all(data) {
+                        tracing::error!("{err:?}");
+                        return reply.error(libc::EIO);
                     }
                     reply.written(data.len() as u32);
+                }
+                Ok(pos) => {
+                    tracing::warn!(pos, offset, "failed to seek to requested offset");
+                    reply.error(libc::EIO);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");

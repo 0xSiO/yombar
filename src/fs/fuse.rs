@@ -474,8 +474,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 }
             }
         } else {
-            tracing::warn!(fh, "file handle not found");
-            reply.error(libc::ENOENT);
+            tracing::warn!(fh, "invalid file handle");
+            reply.error(libc::ESTALE);
         }
     }
 
@@ -515,8 +515,8 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 }
             }
         } else {
-            tracing::warn!(fh, "file handle not found");
-            reply.error(libc::ENOENT);
+            tracing::warn!(fh, "invalid file handle");
+            reply.error(libc::ESTALE);
         }
     }
 

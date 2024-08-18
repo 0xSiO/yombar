@@ -166,13 +166,12 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         mode: Option<u32>,
         _uid: Option<u32>,
         _gid: Option<u32>,
-        // TODO: Support truncation via size
-        _size: Option<u64>,
+        size: Option<u64>,
         atime: Option<fuser::TimeOrNow>,
         mtime: Option<fuser::TimeOrNow>,
         // TODO: Support ctime and other timestamps?
         _ctime: Option<std::time::SystemTime>,
-        _fh: Option<u64>,
+        fh: Option<u64>,
         _crtime: Option<std::time::SystemTime>,
         _chgtime: Option<std::time::SystemTime>,
         _bkuptime: Option<std::time::SystemTime>,
@@ -189,6 +188,39 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 if let Err(err) = self.fs.set_permissions(&path, Permissions::from_mode(mode)) {
                     tracing::error!("{err:?}");
                     return reply.error(libc::EIO);
+                }
+            }
+
+            if let Some(size) = size {
+                if let Some(fh) = fh {
+                    match self.open_files.get_mut(&fh) {
+                        Some(file) => {
+                            if let Err(err) = file.set_len(size) {
+                                tracing::error!("{err:?}");
+                                return reply.error(libc::EIO);
+                            }
+                        }
+                        None => {
+                            tracing::warn!(fh, "invalid file handle");
+                            return reply.error(libc::ESTALE);
+                        }
+                    }
+                } else {
+                    let mut options = OpenOptions::new();
+                    options.read(true).write(true);
+
+                    match self.fs.open_file(&path, options) {
+                        Ok(mut file) => {
+                            if let Err(err) = file.set_len(size) {
+                                tracing::error!("{err:?}");
+                                return reply.error(libc::EIO);
+                            }
+                        }
+                        Err(err) => {
+                            tracing::error!("{err:?}");
+                            return reply.error(libc::EIO);
+                        }
+                    }
                 }
             }
 

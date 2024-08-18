@@ -167,11 +167,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        Ok(EncryptedFile::open(
-            self.vault.cryptor(),
-            ciphertext_path,
-            options,
-        )?)
+        EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)
     }
 
     fn rename_file(

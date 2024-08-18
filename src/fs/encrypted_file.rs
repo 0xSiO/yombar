@@ -150,6 +150,57 @@ impl<'k> EncryptedFile<'k> {
         Ok(Self::cleartext_len(self.cryptor, &*self.file.try_read()?)?)
     }
 
+    pub fn set_len(&mut self, new_len: u64) -> Result<()> {
+        let current_len = self.len()?;
+
+        match current_len.cmp(&new_len) {
+            Ordering::Less => {
+                let extension = vec![0; (new_len - current_len) as usize];
+                self.seek(SeekFrom::End(0))?;
+                self.write_all(&extension)?;
+            }
+            Ordering::Equal => {}
+            Ordering::Greater => {
+                let guard = self.file.try_write()?;
+
+                let max_chunk_len = self.cryptor.max_chunk_len();
+                let current_pos =
+                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(new_len))? as usize;
+                let chunk_number = current_pos / max_chunk_len;
+                let chunk_offset = current_pos % max_chunk_len;
+                let chunk_start = chunk_number * max_chunk_len;
+
+                // FIXME: This seems to corrupt the ciphertext file, figure it out
+                if chunk_offset > 0 {
+                    // We're partway through a chunk, so we need to truncate it
+                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+
+                    let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
+                    if let (false, n) = util::try_read_exact(&*guard, &mut ciphertext_chunk)? {
+                        ciphertext_chunk.truncate(n)
+                    }
+
+                    let mut chunk = self
+                        .cryptor
+                        .decrypt_chunk(ciphertext_chunk, &self.header, chunk_number)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    chunk.truncate(chunk_offset);
+
+                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+                    drop(guard);
+                    self.write_all(&chunk)?;
+                    let guard = self.file.try_write()?;
+                    guard.set_len(Self::ciphertext_pos(&guard)?)?;
+                } else {
+                    // We're on a cleartext chunk boundary, just cut the file off here
+                    guard.set_len(Self::ciphertext_pos(&guard)?)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Fetch the metadata of the underlying ciphertext file.
     pub fn metadata(&self) -> Result<Metadata> {
         Ok(self.file.try_read()?.metadata()?)

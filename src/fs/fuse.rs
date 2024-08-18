@@ -47,12 +47,12 @@ impl From<Attributes> for FileAttr {
         Self {
             ino: value.inode,
             size: value.entry.size,
-            // TODO: Cryptomator sets this to 0, should we do the same?
             blocks: value.entry.metadata.blocks(),
             atime: value.entry.metadata.accessed().unwrap_or(UNIX_EPOCH),
             mtime: value.entry.metadata.modified().unwrap_or(UNIX_EPOCH),
-            // TODO: Is created() the right one to use here? Looks like Cryptomator does this also
-            ctime: value.entry.metadata.created().unwrap_or(UNIX_EPOCH),
+            ctime: UNIX_EPOCH
+                + Duration::from_secs(value.entry.metadata.ctime() as u64)
+                + Duration::from_nanos(value.entry.metadata.ctime_nsec() as u64),
             crtime: value.entry.metadata.created().unwrap_or(UNIX_EPOCH),
             kind: value.entry.kind.into(),
             perm: value.entry.metadata.permissions().mode() as u16,
@@ -61,7 +61,6 @@ impl From<Attributes> for FileAttr {
             gid: value.entry.metadata.gid(),
             rdev: value.entry.metadata.rdev() as u32,
             blksize: value.entry.metadata.blksize() as u32,
-            // TODO: Return flags?
             flags: 0,
         }
     }
@@ -170,7 +169,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         size: Option<u64>,
         atime: Option<fuser::TimeOrNow>,
         mtime: Option<fuser::TimeOrNow>,
-        // TODO: Support ctime and other timestamps?
         _ctime: Option<std::time::SystemTime>,
         fh: Option<u64>,
         _crtime: Option<std::time::SystemTime>,
@@ -180,11 +178,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply: fuser::ReplyAttr,
     ) {
         if let Some(path) = self.tree.get_path(ino) {
-            if path.parent().is_none() {
-                // TODO: Should we change root dir metadata?
-                return reply.error(libc::ENOTSUP);
-            }
-
             if let Some(mode) = mode {
                 if let Err(err) = self.fs.set_permissions(&path, Permissions::from_mode(mode)) {
                     tracing::error!("{err:?}");

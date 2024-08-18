@@ -513,7 +513,6 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
-    // TODO: Support timestamp updates for directories if possible
     fn set_times(&self, cleartext_path: impl AsRef<Path>, times: FileTimes) -> Result<()> {
         let entry = self.dir_entry(&cleartext_path)?;
 
@@ -534,9 +533,10 @@ impl<'v> EncryptedFileSystem<'v> {
                 file.set_times(times)?;
             }
             FileKind::Directory => {
-                // let dir_id = self.translator.get_dir_id(&cleartext_path)?;
-                // let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
-                bail!("not yet implemented");
+                let dir_id = self.translator.get_dir_id(&cleartext_path)?;
+                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+                let dir = File::open(self.vault.path().join("d").join(hashed_dir_id))?;
+                dir.set_times(times)?;
             }
             FileKind::Symlink => {
                 let parent_dir_id = self

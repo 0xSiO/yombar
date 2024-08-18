@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub fn siv_ctrmac_basic() {
     // Check vault import
     let vault = Vault::open(
-        "tests/fixtures/vault_v8_siv_ctrmac/vault.cryptomator",
+        "tests/fixtures/vault_v8_siv_ctrmac",
         String::from("password"),
     )
     .unwrap();
@@ -231,11 +231,7 @@ pub fn siv_ctrmac_basic() {
 #[test]
 pub fn siv_gcm_basic() {
     // Check vault import
-    let vault = Vault::open(
-        "tests/fixtures/vault_v8_siv_gcm/vault.cryptomator",
-        String::from("password"),
-    )
-    .unwrap();
+    let vault = Vault::open("tests/fixtures/vault_v8_siv_gcm", String::from("password")).unwrap();
 
     assert_eq!(
         vault.path(),

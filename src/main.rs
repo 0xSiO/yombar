@@ -19,7 +19,7 @@ pub fn main() -> Result<()> {
         .init();
 
     let vault = Vault::open(
-        "tests/fixtures/vault_v8_siv_ctrmac/vault.cryptomator",
+        "tests/fixtures/vault_v8_siv_ctrmac",
         String::from("password"),
     )?;
 

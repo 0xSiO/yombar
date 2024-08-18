@@ -10,7 +10,6 @@ pub mod siv_gcm;
 
 const HEADER_RESERVED_LEN: usize = 8;
 
-// TODO: If future cryptors require different header fields, you'll need to generalize
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct FileHeader {
     nonce: Vec<u8>,
@@ -38,7 +37,6 @@ impl FileHeader {
     }
 }
 
-// TODO: This trait is kind of goofy (e.g. functions taking &self but returning constants)
 pub trait FileCryptor {
     fn encrypted_header_len(&self) -> usize;
 

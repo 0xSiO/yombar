@@ -11,7 +11,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use fuser::{FileAttr, FileType, Filesystem, FUSE_ROOT_ID};
+use fuser::{FileAttr, FileType, Filesystem};
 
 use crate::{
     fs::{DirEntry, EncryptedFile, EncryptedFileSystem, FileKind},
@@ -86,7 +86,6 @@ impl<'v> FuseFileSystem<'v> {
     }
 }
 
-// TODO: Look into removing cached tree entries that are no longer valid where possible
 impl<'v> Filesystem for FuseFileSystem<'v> {
     fn init(
         &mut self,
@@ -119,6 +118,10 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
             tracing::warn!(parent, "parent inode not found");
             reply.error(libc::ENOENT);
         }
+    }
+
+    fn forget(&mut self, _req: &fuser::Request<'_>, ino: u64, _nlookup: u64) {
+        self.tree.forget(ino);
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {

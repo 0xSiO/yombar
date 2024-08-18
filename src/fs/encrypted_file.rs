@@ -170,7 +170,6 @@ impl<'k> EncryptedFile<'k> {
                 let chunk_offset = current_pos % max_chunk_len;
                 let chunk_start = chunk_number * max_chunk_len;
 
-                // FIXME: This seems to corrupt the ciphertext file, figure it out
                 if chunk_offset > 0 {
                     // We're partway through a chunk, so we need to truncate it
                     Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
@@ -185,16 +184,16 @@ impl<'k> EncryptedFile<'k> {
                         .decrypt_chunk(ciphertext_chunk, &self.header, chunk_number)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                     chunk.truncate(chunk_offset);
+                    let new_ciphertext_chunk = self
+                        .cryptor
+                        .encrypt_chunk(chunk, &self.header, chunk_number)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                     Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
-                    drop(guard);
-                    self.write_all(&chunk)?;
-                    let guard = self.file.try_write()?;
-                    guard.set_len(Self::ciphertext_pos(&guard)?)?;
-                } else {
-                    // We're on a cleartext chunk boundary, just cut the file off here
-                    guard.set_len(Self::ciphertext_pos(&guard)?)?;
+                    (&*guard).write_all(&new_ciphertext_chunk)?;
                 }
+
+                guard.set_len(Self::ciphertext_pos(&guard)?)?;
             }
         }
 

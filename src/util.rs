@@ -81,12 +81,9 @@ pub fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
     let max_enc_chunk_len = cryptor.max_encrypted_chunk_len() as u64;
     let max_chunk_len = cryptor.max_chunk_len() as u64;
     let enc_chunks_len = ciphertext_size - cryptor.encrypted_header_len() as u64;
-    let num_full_chunks = enc_chunks_len / max_enc_chunk_len;
-    // Length of last partial cleartext chunk, or zero if there is no partial chunk
-    let remainder = (enc_chunks_len % max_enc_chunk_len).max(max_enc_chunk_len - max_chunk_len)
-        - (max_enc_chunk_len - max_chunk_len);
+    let num_chunks = enc_chunks_len.div_ceil(max_enc_chunk_len);
 
-    num_full_chunks * max_chunk_len + remainder
+    enc_chunks_len - (num_chunks * (max_enc_chunk_len - max_chunk_len))
 }
 
 #[cfg(test)]

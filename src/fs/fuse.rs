@@ -123,27 +123,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         if let Some(path) = self.tree.get_path(ino) {
-            if path.parent().is_none() {
-                let metadata = match self.fs.root_dir().metadata() {
-                    Ok(metadata) => metadata,
-                    Err(err) => {
-                        tracing::error!("{err:?}");
-                        return reply.error(libc::EIO);
-                    }
-                };
-                return reply.attr(
-                    &TTL,
-                    &FileAttr::from(Attributes {
-                        inode: FUSE_ROOT_ID,
-                        entry: DirEntry {
-                            kind: FileKind::Directory,
-                            size: metadata.size(),
-                            metadata,
-                        },
-                    }),
-                );
-            }
-
             match self.fs.dir_entry(path) {
                 Ok(entry) => {
                     reply.attr(&TTL, &FileAttr::from(Attributes { inode: ino, entry }));

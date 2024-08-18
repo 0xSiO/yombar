@@ -54,7 +54,15 @@ impl<'v> EncryptedFileSystem<'v> {
     }
 
     fn dir_entry(&self, cleartext_path: impl AsRef<Path>) -> Result<DirEntry> {
-        // TOOD: Handle case with no parent
+        if cleartext_path.as_ref().parent().is_none() {
+            let metadata = self.root_dir().metadata()?;
+            return Ok(DirEntry {
+                kind: FileKind::Directory,
+                size: metadata.len(),
+                metadata,
+            });
+        }
+
         let parent_dir_id = self
             .translator
             .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
@@ -107,7 +115,10 @@ impl<'v> EncryptedFileSystem<'v> {
             });
         }
 
-        bail!("invalid file type");
+        bail!(
+            "invalid file type for ciphertext path: {}",
+            ciphertext_path.to_string_lossy()
+        );
     }
 
     fn dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> Result<BTreeMap<PathBuf, DirEntry>> {

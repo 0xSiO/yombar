@@ -47,7 +47,7 @@ impl From<Attributes> for FileAttr {
         Self {
             ino: value.inode,
             size: value.entry.size,
-            // TOD: Cryptomator sets this to 0, should we do the same?
+            // TODO: Cryptomator sets this to 0, should we do the same?
             blocks: value.entry.metadata.blocks(),
             atime: value.entry.metadata.accessed().unwrap_or(UNIX_EPOCH),
             mtime: value.entry.metadata.modified().unwrap_or(UNIX_EPOCH),
@@ -61,6 +61,7 @@ impl From<Attributes> for FileAttr {
             gid: value.entry.metadata.gid(),
             rdev: value.entry.metadata.rdev() as u32,
             blksize: value.entry.metadata.blksize() as u32,
+            // TODO: Return flags?
             flags: 0,
         }
     }
@@ -453,7 +454,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     file.set_append(flags & libc::O_APPEND > 0);
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);
-                    reply.opened(fh, flags as u32)
+                    // TODO: Should we return any flags?
+                    // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
+                    reply.opened(fh, 0)
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
@@ -618,7 +621,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         &mut self,
         _req: &fuser::Request<'_>,
         ino: u64,
-        flags: i32,
+        _flags: i32,
         reply: fuser::ReplyOpen,
     ) {
         if let Some(path) = self.tree.get_path(ino) {
@@ -626,7 +629,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 Ok(entries) => {
                     let handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_dirs.insert(handle, entries);
-                    reply.opened(handle, flags as u32);
+                    // TODO: Should we return any flags?
+                    // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
+                    reply.opened(handle, 0);
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
@@ -675,13 +680,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
-    // TODO: neovim leaving behind temp files on write (4913, 5036, etc.), not being unlinked for
-    //       some reason. See https://github.com/neovim/neovim/blob/release-0.10/src/nvim/bufwrite.c#L750
-    //       Same issue with GNOME text editor too. Possibly related: setattr isn't fully
-    //       implemented, perhaps that's causing issues
-    // TODO: Read up on these, and other calls for more info
-    //   - https://www.gnu.org/software/libc/manual/html_node/Opening-and-Closing-Files.html
-    //   - https://www.man7.org/linux/man-pages/man2/open.2.html
     fn create(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -723,12 +721,14 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
                             let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                             self.open_files.insert(fh, file);
+                            // TODO: Should we return any flags?
+                            // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
                             reply.created(
                                 &TTL,
                                 &FileAttr::from(Attributes { inode, entry }),
                                 0,
                                 fh,
-                                flags as u32,
+                                0,
                             );
                         }
                         Err(err) => {

@@ -51,26 +51,18 @@ impl<'k> Cryptor<'k> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
-        // TODO: Use slice flatten() method when stabilized
-        let mut key = [0_u8; SUBKEY_LEN * 2];
-        let (left, right) = key.split_at_mut(SUBKEY_LEN);
-        left.copy_from_slice(self.key.mac_key());
-        right.copy_from_slice(self.key.enc_key());
+        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
 
-        Ok(Aes256Siv::new(&key.into()).encrypt(associated_data, plaintext)?)
+        Ok(Aes256Siv::new(key.as_flattened().into()).encrypt(associated_data, plaintext)?)
     }
 
     fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
         // AES-SIV takes both the encryption key and mac key, but in reverse order
-        // TODO: Use slice flatten() method when stabilized
-        let mut key = [0_u8; SUBKEY_LEN * 2];
-        let (left, right) = key.split_at_mut(SUBKEY_LEN);
-        left.copy_from_slice(self.key.mac_key());
-        right.copy_from_slice(self.key.enc_key());
+        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
 
-        Ok(Aes256Siv::new(&key.into()).decrypt(associated_data, ciphertext)?)
+        Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
     }
 
     fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {

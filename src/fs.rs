@@ -512,6 +512,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
+    // TODO: Support timestamp updates for directories if possible
     fn set_times(&self, cleartext_path: impl AsRef<Path>, times: FileTimes) -> Result<()> {
         let entry = self.dir_entry(&cleartext_path)?;
 

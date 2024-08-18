@@ -400,11 +400,12 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 
-        let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id).unwrap();
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
         fs::create_dir_all(&hashed_dir_path)?;
         fs::set_permissions(&hashed_dir_path, permissions)?;
-        // TODO: Write encrypted dirid.c9r under hashed dir path
+        EncryptedFile::create_new(self.vault.cryptor(), hashed_dir_path.join("dirid.c9r"))?
+            .write_all(dir_id.as_bytes())?;
 
         let meta = hashed_dir_path.metadata()?;
         Ok(DirEntry {

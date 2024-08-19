@@ -86,6 +86,8 @@ impl<'v> FuseFileSystem<'v> {
     }
 }
 
+// TODO: Explore flags sent to and returned from these methods
+// e.g. https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
 impl<'v> Filesystem for FuseFileSystem<'v> {
     fn init(
         &mut self,
@@ -105,14 +107,16 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         if let Some(parent_path) = self.tree.get_path(parent) {
             let target_path = parent_path.join(name);
 
-            if let Ok(entry) = self.fs.dir_entry(&target_path) {
-                let inode = self.tree.insert_path(target_path);
-                reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
-            } else {
-                // TODO: This will ignore other errors and just assume the path is not found
-                // Maybe we want to distinguish these cases
-                tracing::warn!(?target_path, "path not found");
-                reply.error(libc::ENOENT);
+            match self.fs.dir_entry(&target_path) {
+                Ok(entry) => {
+                    let inode = self.tree.insert_path(target_path);
+                    reply.entry(&TTL, &FileAttr::from(Attributes { inode, entry }), 0);
+                }
+                Err(err) => {
+                    tracing::trace!("{err:?}");
+                    tracing::warn!(?target_path, "failed to lookup path");
+                    reply.error(libc::ENOENT);
+                }
             }
         } else {
             tracing::warn!(parent, "parent inode not found");
@@ -428,8 +432,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     file.set_append(flags & libc::O_APPEND > 0);
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);
-                    // TODO: Should we return any flags?
-                    // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
                     reply.opened(fh, 0)
                 }
                 Err(err) => {
@@ -603,8 +605,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 Ok(entries) => {
                     let handle = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_dirs.insert(handle, entries);
-                    // TODO: Should we return any flags?
-                    // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
                     reply.opened(handle, 0);
                 }
                 Err(err) => {
@@ -681,7 +681,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                     let mut options = OpenOptions::new();
                     options.read(true);
                     options.write(flags & libc::O_WRONLY > 0 || flags & libc::O_RDWR > 0);
-                    // TODO: Set any other custom flags in options?
 
                     match self.fs.open_file(&path, options) {
                         Ok(mut file) => {
@@ -694,8 +693,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
                             let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                             self.open_files.insert(fh, file);
-                            // TODO: Should we return any flags?
-                            // https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
                             reply.created(
                                 &TTL,
                                 &FileAttr::from(Attributes { inode, entry }),

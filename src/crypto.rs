@@ -31,7 +31,6 @@ impl FileHeader {
     }
 
     fn content_key(&self) -> [u8; SUBKEY_LEN] {
-        // TODO: This will fail if payload len is too small
         debug_assert_eq!(self.payload.len() - HEADER_RESERVED_LEN, SUBKEY_LEN);
         self.payload[HEADER_RESERVED_LEN..].try_into().unwrap()
     }

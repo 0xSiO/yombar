@@ -72,7 +72,7 @@ impl Vault {
 
             let config: TokenData<VaultConfig> = util::verify_jwt(jwt, validation, &master_key)?;
 
-            // TODO: Only version 8 is supported for now
+            // Only version 8 is supported for now
             match config.claims.format {
                 8 => {}
                 other => bail!("unsupported vault format: {other}"),

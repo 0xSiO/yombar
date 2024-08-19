@@ -13,8 +13,6 @@ use crate::{
     util, Result,
 };
 
-// TODO: Arithmetic for converting between cleartext/ciphertext byte positions may need to change
-// in the future if we add new cryptor types that change the length of encrypted/decrypted data.
 pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: RwLock<File>,

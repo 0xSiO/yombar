@@ -115,10 +115,7 @@ impl<'v> EncryptedFileSystem<'v> {
             });
         }
 
-        bail!(
-            "invalid file type for ciphertext path: {}",
-            ciphertext_path.to_string_lossy()
-        );
+        bail!("invalid or unknown ciphertext path: {ciphertext_path:?}");
     }
 
     fn dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> Result<BTreeMap<PathBuf, DirEntry>> {

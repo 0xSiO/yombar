@@ -36,7 +36,7 @@ impl DirTree {
     pub fn get_path(&self, inode: Inode) -> Option<PathBuf> {
         match self.nodes.get(&inode) {
             Some(node) => match node.parent {
-                // TODO: Is this okay to unwrap?
+                // We're going to assume the parent node exists
                 Some(p) => Some(self.get_path(p).unwrap().join(&node.name)),
                 None => Some(PathBuf::new()),
             },

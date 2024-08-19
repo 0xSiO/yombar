@@ -71,34 +71,32 @@ impl<'v> Translator<'v> {
 
     /// Translates a ciphertext path (either full-length or shortened) into the decrypted filename
     /// of the corresponding cleartext file.
-    // TODO: Refactor this if possible
     pub fn get_cleartext_name(
         &self,
         ciphertext_path: impl AsRef<Path>,
         dir_id: impl AsRef<str>,
     ) -> Result<String> {
         match ciphertext_path.as_ref().extension() {
+            Some(extension) if extension == "c9s" => {
+                let mut ciphertext_name = PathBuf::from(fs::read_to_string(
+                    ciphertext_path.as_ref().join("name.c9s"),
+                )?);
+
+                // Remove .c9r from name
+                ciphertext_name.set_extension("");
+
+                self.vault
+                    .cryptor()
+                    .decrypt_name(ciphertext_name.to_string_lossy(), dir_id)
+            }
+            Some(extension) if extension == "c9r" => {
+                let stem = ciphertext_path.as_ref().file_stem().unwrap_or_default();
+                self.vault
+                    .cryptor()
+                    .decrypt_name(stem.to_string_lossy(), dir_id)
+            }
             Some(extension) => {
-                if extension == "c9s" {
-                    let mut ciphertext_name = PathBuf::from(fs::read_to_string(
-                        ciphertext_path.as_ref().join("name.c9s"),
-                    )?);
-
-                    // Remove .c9r from name
-                    ciphertext_name.set_extension("");
-
-                    Ok(self
-                        .vault
-                        .cryptor()
-                        .decrypt_name(ciphertext_name.to_string_lossy(), dir_id)?)
-                } else {
-                    let stem = ciphertext_path.as_ref().file_stem().unwrap_or_default();
-
-                    Ok(self
-                        .vault
-                        .cryptor()
-                        .decrypt_name(stem.to_string_lossy(), dir_id)?)
-                }
+                bail!("unknown ciphertext file extension: {extension:?}")
             }
             None => bail!("ciphertext path missing extension"),
         }

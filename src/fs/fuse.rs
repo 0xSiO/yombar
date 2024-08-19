@@ -654,6 +654,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
+    // TODO: Implement this
+    // fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {}
+
     fn create(
         &mut self,
         _req: &fuser::Request<'_>,

@@ -425,7 +425,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
             match self.fs.open_file(path, options) {
                 Ok(mut file) => {
-                    // Append mode is technically supported, but kind of through a hack
                     file.set_append(flags & libc::O_APPEND > 0);
                     let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                     self.open_files.insert(fh, file);
@@ -686,7 +685,6 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
 
                     match self.fs.open_file(&path, options) {
                         Ok(mut file) => {
-                            // Append mode is technically supported, but kind of through a hack
                             file.set_append(flags & libc::O_APPEND > 0);
 
                             // Set the correct access mode now that we have a file descriptor

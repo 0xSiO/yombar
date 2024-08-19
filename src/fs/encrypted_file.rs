@@ -271,7 +271,6 @@ impl<'k> Write for EncryptedFile<'k> {
             return Ok(0);
         }
 
-        // TODO: Maybe there's a more elegant way of implementing this 'append mode'
         if self.append {
             // If we're in append mode, we can skip to the end of the file while we hold the
             // exclusive lock, which should be safe

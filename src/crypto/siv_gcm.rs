@@ -7,6 +7,7 @@ use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use rand_core::{OsRng, RngCore};
 use sha1::{Digest, Sha1};
+use unicode_normalization::UnicodeNormalization;
 
 use crate::{key::SUBKEY_LEN, MasterKey, Result};
 
@@ -214,18 +215,21 @@ impl<'k> FileCryptor for Cryptor<'k> {
         Ok(PathBuf::from(first).join(second))
     }
 
-    // TODO: "The cleartext name of a file gets encoded using UTF-8 in Normalization Form C to get
-    // a unique binary representation." https://github.com/unicode-rs/unicode-normalization
     fn encrypt_name(
         &self,
         name: impl AsRef<OsStr>,
         parent_dir_id: impl AsRef<str>,
     ) -> Result<String> {
-        Ok(Base64Url::encode_string(&self.aes_siv_encrypt(
-            // TODO: Is it okay to use lossy UTF-8 conversion?
-            name.as_ref().to_string_lossy().as_bytes(),
-            &[parent_dir_id.as_ref().as_bytes()],
-        )?))
+        Ok(Base64Url::encode_string(
+            &self.aes_siv_encrypt(
+                name.as_ref()
+                    .to_string_lossy()
+                    .nfc()
+                    .collect::<String>()
+                    .as_bytes(),
+                &[parent_dir_id.as_ref().as_bytes()],
+            )?,
+        ))
     }
 
     fn decrypt_name(
@@ -233,7 +237,6 @@ impl<'k> FileCryptor for Cryptor<'k> {
         encrypted_name: impl AsRef<str>,
         parent_dir_id: impl AsRef<str>,
     ) -> Result<String> {
-        // TODO: Can we assume the decrypted bytes are valid UTF-8?
         Ok(String::from_utf8(self.aes_siv_decrypt(
             &Base64Url::decode_vec(encrypted_name.as_ref())?,
             &[parent_dir_id.as_ref().as_bytes()],

@@ -114,7 +114,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                 }
                 Err(err) => {
                     tracing::trace!("{err:?}");
-                    tracing::warn!(?target_path, "failed to lookup path");
+                    tracing::debug!(?target_path, "failed to lookup path");
                     reply.error(libc::ENOENT);
                 }
             }

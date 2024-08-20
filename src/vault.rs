@@ -1,15 +1,19 @@
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
 use color_eyre::eyre::{bail, OptionExt};
-use jsonwebtoken::{TokenData, Validation};
+use jsonwebtoken::{Algorithm, Header, TokenData, Validation};
+use rand_core::OsRng;
+use scrypt::{password_hash::SaltString, Params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     crypto::{siv_ctrmac, siv_gcm, Cryptor},
+    fs::{EncryptedFile, EncryptedFileSystem},
     util, MasterKey, Result, WrappedKey,
 };
 
@@ -40,14 +44,46 @@ pub struct Vault {
 }
 
 impl Vault {
-    // TODO: New vaults require the following:
-    // - name
-    // - location
-    // - password -> master key
-    //
-    // Optional: generate a recovery key, backup masterkey + vault config file
-    //
-    // pub fn create() -> Result<Self, VaultCreateError> {}
+    // TODO: Maybe make creation options more configurable
+    pub fn create(path: impl AsRef<Path>, password: String) -> Result<Self> {
+        let params = Params::recommended();
+        let salt_string = SaltString::generate(OsRng);
+        let kek = util::derive_kek(password, params, salt_string.as_salt())?;
+        let master_key = MasterKey::new()?;
+
+        let mut header = Header::new(Algorithm::HS256);
+        header.kid = Some(String::from("masterkeyfile:masterkey.cryptomator"));
+        let claims = VaultConfig {
+            jti: Uuid::new_v4(),
+            format: 8,
+            shortening_threshold: 220,
+            cipher_combo: CipherCombo::SivGcm,
+        };
+
+        let config_jwt = util::sign_jwt(header.clone(), claims, &master_key)?;
+        let wrapped_key = master_key.wrap(&kek, params, salt_string, 8)?;
+
+        fs::create_dir_all(path.as_ref())?;
+        let path = path.as_ref().canonicalize()?;
+        let vault = Self {
+            path,
+            config: TokenData { header, claims },
+            master_key,
+        };
+
+        fs::write(vault.path.join("vault.cryptomator"), config_jwt)?;
+        fs::write(
+            vault.path.join("masterkey.cryptomator"),
+            serde_json::to_string(&wrapped_key.as_raw())?,
+        )?;
+
+        let fs = EncryptedFileSystem::new(&vault);
+        fs::create_dir_all(fs.root_dir())?;
+        EncryptedFile::create_new(vault.cryptor(), fs.root_dir().join("dirid.c9r"))?
+            .write_all(b"")?;
+
+        Ok(vault)
+    }
 
     // Unlock procedure is as follows:
     // 1. Decode the config JWT header to get the master key URI

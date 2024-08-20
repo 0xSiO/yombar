@@ -46,7 +46,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    fn root_dir(&self) -> PathBuf {
+    pub fn root_dir(&self) -> PathBuf {
         self.vault
             .path()
             .join("d")

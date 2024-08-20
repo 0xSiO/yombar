@@ -83,7 +83,7 @@ impl Debug for MasterKey {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RawWrappedKey {
+pub struct RawWrappedKey {
     version: u32,
     scrypt_salt: String,
     scrypt_cost_param: u32,
@@ -121,6 +121,18 @@ impl WrappedKey {
             mac_key: Base64::decode_vec(&raw.hmac_master_key)?,
             version_mac: Base64::decode_vec(&raw.version_mac)?,
         })
+    }
+
+    pub fn as_raw(&self) -> RawWrappedKey {
+        RawWrappedKey {
+            version: 999,
+            scrypt_salt: self.scrypt_salt.to_string(),
+            scrypt_cost_param: 2_u32.pow(self.scrypt_params.log_n() as u32),
+            scrypt_block_size: self.scrypt_params.r(),
+            primary_master_key: Base64::encode_string(&self.enc_key),
+            hmac_master_key: Base64::encode_string(&self.mac_key),
+            version_mac: Base64::encode_string(&self.version_mac),
+        }
     }
 
     pub fn salt(&self) -> Salt {

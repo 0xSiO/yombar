@@ -18,10 +18,9 @@ pub fn main() -> Result<()> {
         .with(tracing_error::ErrorLayer::default())
         .init();
 
-    let vault = Vault::open(
-        "tests/fixtures/vault_v8_siv_ctrmac",
-        String::from("password"),
-    )?;
+    let _ = Vault::create("./new_vault", String::from("password"));
+
+    let vault = Vault::open("new_vault", String::from("password"))?;
 
     fuser::mount2(
         FuseFileSystem::new(EncryptedFileSystem::new(&vault)),

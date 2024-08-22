@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 use cryptomator::{
@@ -21,12 +21,18 @@ pub struct Args {
 #[derive(Debug, Subcommand)]
 #[non_exhaustive]
 pub enum Command {
+    /// Create a new empty vault
     Create {
+        /// Path to directory in which to initialize the vault
         vault_path: PathBuf,
     },
+    /// Mount a vault as a virtual filesystem
     Mount {
+        /// Path to encrypted vault directory
         vault_path: PathBuf,
+        /// Path to directory in which to mount the virtual filesystem
         mount_point: PathBuf,
+        /// Mount vault as a read-only filesystem
         #[arg(short, long)]
         read_only: bool,
     },
@@ -70,8 +76,7 @@ pub fn main() -> Result<()> {
             read_only,
         } => {
             let password = rpassword::prompt_password("Password: ")?;
-            let vault = Vault::open(vault_path, password)?;
-
+            let vault = Vault::open(&vault_path, password)?;
             let mut options = vec![
                 MountOption::FSName(String::from("cryptomator-rs")),
                 MountOption::DefaultPermissions,
@@ -81,11 +86,12 @@ pub fn main() -> Result<()> {
                 options.push(MountOption::RO);
             }
 
+            fs::create_dir_all(&mount_point)?;
+
             // TODO: Maybe spawn in background, wait for exit signal, and drop session
             fuser::mount2(
                 FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
-                // TODO: Choose a mount point automatically like Cryptomator does
-                mount_point,
+                &mount_point,
                 &options,
             )?;
         }

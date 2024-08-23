@@ -2,7 +2,7 @@ use std::{env, fs, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 use cryptomator::{
-    fs::{fuse::FuseFileSystem, EncryptedFileSystem},
+    fs::{fuse::FuseFileSystem, EncryptedFileSystem, Translator},
     Result, Vault,
 };
 use fuser::MountOption;
@@ -35,6 +35,13 @@ pub enum Command {
         /// Mount vault as a read-only filesystem
         #[arg(short, long)]
         read_only: bool,
+    },
+    /// Translate a cleartext file path to an encrypted file path
+    Translate {
+        /// Path to encrypted vault directory
+        vault_path: PathBuf,
+        /// Path to translate
+        path: PathBuf,
     },
 }
 
@@ -94,6 +101,16 @@ pub fn main() -> Result<()> {
                 &mount_point,
                 &options,
             )?;
+        }
+        Command::Translate { vault_path, path } => {
+            let password = rpassword::prompt_password("Password: ")?;
+            let vault = Vault::open(&vault_path, password)?;
+            let translator = Translator::new(&vault);
+            let dir_id = translator.get_dir_id(&path)?;
+            println!(
+                "{}",
+                translator.get_ciphertext_path(path, dir_id)?.display()
+            );
         }
     };
 

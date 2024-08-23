@@ -4,7 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use color_eyre::eyre::{bail, OptionExt};
+use color_eyre::{
+    eyre::{bail, Context, OptionExt},
+    Section,
+};
 use jsonwebtoken::{Algorithm, Header, TokenData, Validation};
 use rand_core::OsRng;
 use scrypt::{password_hash::SaltString, Params};
@@ -100,7 +103,9 @@ impl Vault {
             let key_path = config_dir.join(master_key_uri.split_once("masterkeyfile:").unwrap().1);
             let wrapped_key = WrappedKey::from_file(key_path)?;
             let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt())?;
-            let master_key = MasterKey::from_wrapped(&wrapped_key, &kek)?;
+            let master_key = MasterKey::from_wrapped(&wrapped_key, &kek)
+                .context("failed to unwrap master key")
+                .suggestion("make sure you're using the correct password")?;
 
             let mut validation = Validation::new(header.alg);
             validation.validate_exp = false;

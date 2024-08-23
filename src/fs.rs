@@ -15,7 +15,7 @@ mod translator;
 
 use color_eyre::eyre::bail;
 pub use encrypted_file::EncryptedFile;
-use translator::Translator;
+pub use translator::Translator;
 use uuid::Uuid;
 
 #[derive(Debug, Copy, Clone, PartialEq)]

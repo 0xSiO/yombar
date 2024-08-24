@@ -107,48 +107,45 @@ impl<'k> EncryptedFile<'k> {
 
                 // Skip chunk header if desired position is partway through a chunk
                 if chunk_offset > 0 {
-                    desired_pos += chunk_offset
-                        + (cryptor.max_encrypted_chunk_len() - cryptor.max_chunk_len()) as u64;
+                    desired_pos = desired_pos.saturating_add(
+                        (cryptor.max_encrypted_chunk_len() - cryptor.max_chunk_len()) as u64
+                            + chunk_offset,
+                    );
                 }
 
-                // Cap the seek to the end of the ciphertext file
-                let new_ciphertext_pos = desired_pos.min(Self::ciphertext_len(file)?);
-                file.seek(SeekFrom::Start(new_ciphertext_pos))?;
-                Self::cleartext_pos(cryptor, file)
+                let end_pos = file.seek(SeekFrom::Start(desired_pos))?;
+                Ok(util::get_cleartext_size(cryptor, end_pos))
             }
             SeekFrom::End(n) => {
-                let cleartext_size = Self::cleartext_len(cryptor, file)?;
-                Self::seek_inner(
-                    cryptor,
-                    file,
-                    SeekFrom::Start(
-                        // Don't permit seeking past the beginning or end
-                        cleartext_size.saturating_sub(-n.max(0) as u64),
-                    ),
-                )
+                let cleartext_len = Self::cleartext_len(cryptor, file)?;
+                let desired_pos = match n.cmp(&0) {
+                    Ordering::Less => cleartext_len.saturating_sub(-n as u64),
+                    Ordering::Equal => cleartext_len,
+                    Ordering::Greater => cleartext_len.saturating_add(n as u64),
+                };
+
+                Self::seek_inner(cryptor, file, SeekFrom::Start(desired_pos))
             }
             SeekFrom::Current(n) => {
                 let cleartext_pos = Self::cleartext_pos(cryptor, file)?;
-                let new_cleartext_pos = match n.cmp(&0) {
+                let desired_pos = match n.cmp(&0) {
                     Ordering::Less => cleartext_pos.saturating_sub(-n as u64),
-                    Ordering::Equal => return Ok(cleartext_pos),
-                    Ordering::Greater => cleartext_pos
-                        .saturating_add(n as u64)
-                        .min(Self::cleartext_len(cryptor, file)?),
+                    Ordering::Equal => cleartext_pos,
+                    Ordering::Greater => cleartext_pos.saturating_add(n as u64),
                 };
 
-                Self::seek_inner(cryptor, file, SeekFrom::Start(new_cleartext_pos))
+                Self::seek_inner(cryptor, file, SeekFrom::Start(desired_pos))
             }
         }
     }
 
     /// Fetch the cleartext size of the file, in bytes.
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> Result<u64> {
-        Ok(Self::cleartext_len(self.cryptor, &*self.file.try_read()?)?)
+    pub fn len(&self) -> io::Result<u64> {
+        Self::cleartext_len(self.cryptor, &*self.file.try_read()?)
     }
 
-    pub fn set_len(&mut self, new_len: u64) -> Result<()> {
+    pub fn set_len(&mut self, new_len: u64) -> io::Result<()> {
         let current_len = self.len()?;
 
         match current_len.cmp(&new_len) {
@@ -218,7 +215,10 @@ impl<'k> Read for EncryptedFile<'k> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let guard = self.file.try_read()?;
 
-        if buf.is_empty() || Self::ciphertext_pos(&guard)? == Self::ciphertext_len(&guard)? {
+        if buf.is_empty()
+            || Self::cleartext_pos(self.cryptor, &guard)?
+                >= Self::cleartext_len(self.cryptor, &guard)?
+        {
             return Ok(0);
         }
 
@@ -254,7 +254,6 @@ impl<'k> Read for EncryptedFile<'k> {
     }
 }
 
-// TODO: Issues with preallocating some files or something, seeking far past the end e.g. qb
 impl<'k> Seek for EncryptedFile<'k> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let guard = self.file.try_read()?;
@@ -264,20 +263,31 @@ impl<'k> Seek for EncryptedFile<'k> {
 
 impl<'k> Write for EncryptedFile<'k> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let guard = self.file.try_write()?;
+        let mut guard = self.file.try_write()?;
 
         if buf.is_empty() {
             return Ok(0);
         }
 
+        // If we're in append mode, we need to skip to the end first
         if self.append {
-            // If we're in append mode, we can skip to the end of the file while we hold the
-            // exclusive lock, which should be safe
-            (&*guard).seek(SeekFrom::End(0))?;
+            Self::seek_inner(self.cryptor, &guard, SeekFrom::End(0))?;
+        }
+
+        let cleartext_pos = Self::cleartext_pos(self.cryptor, &guard)?;
+        let cleartext_len = Self::cleartext_len(self.cryptor, &guard)?;
+
+        // If we've seeked beyond the end, we need to fill in the empty space with zeros
+        if cleartext_pos > cleartext_len {
+            let extension = vec![0; (cleartext_pos - cleartext_len) as usize];
+            Self::seek_inner(self.cryptor, &guard, SeekFrom::End(0))?;
+            drop(guard);
+            self.write_all(&extension)?;
+            guard = self.file.try_write()?;
         }
 
         let max_chunk_len = self.cryptor.max_chunk_len();
-        let current_pos = Self::cleartext_pos(self.cryptor, &guard)? as usize;
+        let current_pos = cleartext_pos as usize;
         let chunk_number = current_pos / max_chunk_len;
         let chunk_offset = current_pos % max_chunk_len;
         let chunk_start = chunk_number * max_chunk_len;

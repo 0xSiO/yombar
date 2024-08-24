@@ -1,6 +1,23 @@
 # yombar
 
-An alternative implementation of [Cryptomator](https://github.com/cryptomator/cryptomator) using Rust.
+A simpler, faster, and more lightweight implementation of [Cryptomator](https://github.com/cryptomator/cryptomator) using Rust.
+
+## Usage
+
+```
+Usage: yombar [OPTIONS] <COMMAND>
+
+Commands:
+  create     Create a new empty vault
+  mount      Mount a vault as a virtual filesystem
+  translate  Translate a cleartext file path to an encrypted file path
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...
+  -h, --help        Print help
+  -V, --version     Print version
+```
 
 ## Contributing
 

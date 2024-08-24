@@ -20,12 +20,14 @@ use crate::{
 pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
     let password_hash =
         Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
+    // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
+    let hash = password_hash.hash.unwrap();
 
     password.zeroize();
-    debug_assert_eq!(password_hash.hash.unwrap().len(), SUBKEY_LEN);
+    debug_assert_eq!(hash.len(), SUBKEY_LEN);
 
     let mut kek_bytes = [0_u8; SUBKEY_LEN];
-    kek_bytes.copy_from_slice(password_hash.hash.unwrap().as_bytes());
+    kek_bytes.copy_from_slice(hash.as_bytes());
     Ok(Kek::from(kek_bytes))
 }
 

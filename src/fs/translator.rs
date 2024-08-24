@@ -90,7 +90,7 @@ impl<'v> Translator<'v> {
                     .decrypt_name(ciphertext_name.to_string_lossy(), dir_id)
             }
             Some(extension) if extension == "c9r" => {
-                let stem = ciphertext_path.as_ref().file_stem().unwrap_or_default();
+                let stem = ciphertext_path.as_ref().file_stem().unwrap();
                 self.vault
                     .cryptor()
                     .decrypt_name(stem.to_string_lossy(), dir_id)

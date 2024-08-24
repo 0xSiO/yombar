@@ -628,6 +628,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     ) {
         if let Some(entries) = self.open_dirs.get(&fh) {
             for (i, (path, dir_entry)) in entries.iter().enumerate().skip(offset as usize) {
+                // Each entry in a dir should have a name
                 let name = path.file_name().unwrap().to_os_string();
                 let inode = self.tree.insert_path(path);
                 if reply.add(inode, (i + 1) as i64, dir_entry.kind.into(), name) {
@@ -690,9 +691,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
                             file.set_append(flags & libc::O_APPEND > 0);
 
                             // Set the correct access mode now that we have a file descriptor
-                            self.fs
+                            if let Err(err) = self
+                                .fs
                                 .set_permissions(&path, Permissions::from_mode(mode & !umask))
-                                .unwrap();
+                            {
+                                tracing::error!("{err:?}");
+                                return reply.error(libc::EIO);
+                            }
 
                             let fh = self.next_handle.fetch_add(1, Ordering::SeqCst);
                             self.open_files.insert(fh, file);

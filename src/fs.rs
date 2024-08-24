@@ -95,7 +95,7 @@ impl<'v> EncryptedFileSystem<'v> {
         // Directory, either full-length or shortened name
         if ciphertext_path.is_dir() && ciphertext_path.join("dir.c9r").is_file() {
             let dir_id = self.translator.get_dir_id(&cleartext_path)?;
-            let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+            let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id)?;
             let meta = self.vault.path().join("d").join(hashed_dir_id).metadata()?;
             return Ok(DirEntry {
                 kind: FileKind::Directory,
@@ -120,7 +120,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
     fn dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> Result<BTreeMap<PathBuf, DirEntry>> {
         let dir_id = self.translator.get_dir_id(&cleartext_dir)?;
-        let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id).unwrap();
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id)?;
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
         let ciphertext_entries = hashed_dir_path
             .read_dir()?
@@ -367,7 +367,8 @@ impl<'v> EncryptedFileSystem<'v> {
             .translator
             .get_ciphertext_path(parent.as_ref().join(name), &parent_dir_id)?;
 
-        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+        // Probably fine to unwrap since get_ciphertext_path always gives a c9r/c9s extension
+        if ciphertext_path.extension().unwrap() == "c9s" {
             fs::create_dir_all(&ciphertext_path)?;
             let full_name = self
                 .translator
@@ -401,14 +402,15 @@ impl<'v> EncryptedFileSystem<'v> {
         let dir_id = Uuid::new_v4().to_string();
         fs::write(ciphertext_path.join("dir.c9r"), &dir_id)?;
 
-        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+        // Probably fine to unwrap since get_ciphertext_path always gives a c9r/c9s extension
+        if ciphertext_path.extension().unwrap() == "c9s" {
             let full_name = self
                 .translator
                 .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 
-        let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id).unwrap();
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id)?;
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
         fs::create_dir_all(&hashed_dir_path)?;
         fs::set_permissions(&hashed_dir_path, permissions)?;
@@ -436,7 +438,8 @@ impl<'v> EncryptedFileSystem<'v> {
 
         fs::create_dir_all(&ciphertext_path)?;
 
-        if ciphertext_path.extension().unwrap().to_str().unwrap() == "c9s" {
+        // Probably fine to unwrap since get_ciphertext_path always gives a c9r/c9s extension
+        if ciphertext_path.extension().unwrap() == "c9s" {
             let full_name = self
                 .translator
                 .get_full_ciphertext_name(parent.as_ref().join(link_name), parent_dir_id)?;
@@ -470,7 +473,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
     fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
         let dir_id = self.translator.get_dir_id(parent.as_ref().join(name))?;
-        let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+        let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id)?;
         fs::remove_dir_all(self.vault.path().join("d").join(hashed_dir_id))?;
 
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
@@ -504,7 +507,7 @@ impl<'v> EncryptedFileSystem<'v> {
             }
             FileKind::Directory => {
                 let dir_id = self.translator.get_dir_id(&cleartext_path)?;
-                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id)?;
                 fs::set_permissions(self.vault.path().join("d").join(hashed_dir_id), permissions)?;
             }
             FileKind::Symlink => {
@@ -542,7 +545,7 @@ impl<'v> EncryptedFileSystem<'v> {
             }
             FileKind::Directory => {
                 let dir_id = self.translator.get_dir_id(&cleartext_path)?;
-                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id).unwrap();
+                let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id)?;
                 let dir = File::open(self.vault.path().join("d").join(hashed_dir_id))?;
                 dir.set_times(times)?;
             }

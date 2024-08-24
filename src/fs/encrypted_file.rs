@@ -254,6 +254,7 @@ impl<'k> Read for EncryptedFile<'k> {
     }
 }
 
+// TODO: Issues with preallocating some files or something, seeking far past the end e.g. qb
 impl<'k> Seek for EncryptedFile<'k> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let guard = self.file.try_read()?;

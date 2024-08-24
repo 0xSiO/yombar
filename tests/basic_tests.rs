@@ -6,11 +6,11 @@ use std::{
 };
 
 use base64ct::{Base64, Encoding};
-use cryptomator::{
-    crypto::FileCryptor, fs::EncryptedFile, util, CipherCombo, MasterKey, Vault, VaultConfig,
-};
 use jsonwebtoken::{TokenData, Validation};
 use uuid::Uuid;
+use yombar::{
+    crypto::FileCryptor, fs::EncryptedFile, util, CipherCombo, MasterKey, Vault, VaultConfig,
+};
 
 #[test]
 pub fn siv_ctrmac_basic() {

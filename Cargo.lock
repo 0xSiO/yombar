@@ -208,9 +208,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cc"
-version = "1.1.13"
+version = "1.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72db2f7947ecee9b03b510377e8bb9077afa27176fdbff55c51027e976fdcc48"
+checksum = "50d2eb3cd3d1bf4529e31c215ee6f93ec5a3d536d9f578f93d9d33ee19562932"
 dependencies = [
  "shlex",
 ]
@@ -333,39 +333,6 @@ dependencies = [
  "generic-array",
  "rand_core",
  "typenum",
-]
-
-[[package]]
-name = "cryptomator"
-version = "0.0.0"
-dependencies = [
- "aes",
- "aes-gcm",
- "aes-kw",
- "aes-siv",
- "base32ct",
- "base64ct",
- "clap",
- "color-eyre",
- "ctr",
- "fd-lock",
- "fuser",
- "hmac",
- "jsonwebtoken",
- "libc",
- "rand_core",
- "rpassword",
- "scrypt",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
- "unicode-normalization",
- "uuid",
- "zeroize",
 ]
 
 [[package]]
@@ -868,9 +835,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.125"
+version = "1.0.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83c8e735a073ccf5be70aa8066aa984eaf2fa000db6c8d0100ae605b366d31ed"
+checksum = "8043c06d9f82bd7271361ed64f415fe5e12a77fdb52e573e7f06a516dea329ad"
 dependencies = [
  "itoa",
  "memchr",
@@ -1332,6 +1299,39 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "yombar"
+version = "0.0.0"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "aes-kw",
+ "aes-siv",
+ "base32ct",
+ "base64ct",
+ "clap",
+ "color-eyre",
+ "ctr",
+ "fd-lock",
+ "fuser",
+ "hmac",
+ "jsonwebtoken",
+ "libc",
+ "rand_core",
+ "rpassword",
+ "scrypt",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+ "unicode-normalization",
+ "uuid",
+ "zeroize",
+]
 
 [[package]]
 name = "zerocopy"

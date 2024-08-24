@@ -1,4 +1,4 @@
-# cryptomator-rs
+# yombar
 
 An alternative implementation of [Cryptomator](https://github.com/cryptomator/cryptomator) using Rust.
 

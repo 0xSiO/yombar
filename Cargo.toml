@@ -1,9 +1,9 @@
 [package]
-name = "cryptomator"
+name = "yombar"
 version = "0.0.0"
 authors = ["Luc Street (@0xSiO)"]
 description = "..."
-repository = "https://github.com/0xSiO/cryptomator-rs"
+repository = "https://github.com/0xSiO/yombar"
 license = "AGPL-3.0"
 edition = "2021"
 

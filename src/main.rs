@@ -1,13 +1,13 @@
 use std::{env, fs, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
-use cryptomator::{
-    fs::{fuse::FuseFileSystem, EncryptedFileSystem, Translator},
-    Result, Vault,
-};
 use fuser::MountOption;
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use yombar::{
+    fs::{fuse::FuseFileSystem, EncryptedFileSystem, Translator},
+    Result, Vault,
+};
 
 #[derive(Debug, Parser)]
 #[command(version)]
@@ -85,7 +85,7 @@ pub fn main() -> Result<()> {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
             let mut options = vec![
-                MountOption::FSName(String::from("cryptomator-rs")),
+                MountOption::FSName(String::from("yombar")),
                 MountOption::DefaultPermissions,
             ];
 

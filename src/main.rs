@@ -1,11 +1,12 @@
-use std::{env, fs, path::PathBuf};
+use std::{collections::VecDeque, env, fs, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
+use color_eyre::eyre::bail;
 use fuser::MountOption;
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
-    fs::{fuse::FuseFileSystem, EncryptedFileSystem, Translator},
+    fs::{fuse::FuseFileSystem, DirEntry, EncryptedFileSystem, FileKind, Translator},
     Result, Vault,
 };
 
@@ -36,12 +37,15 @@ pub enum Command {
         #[arg(short, long)]
         read_only: bool,
     },
-    /// Translate a cleartext file path to an encrypted file path
+    /// Translate between cleartext paths and encrypted paths
     Translate {
         /// Path to encrypted vault directory
         vault_path: PathBuf,
         /// Path to translate
         path: PathBuf,
+        /// Use breadth-first search to translate encrypted path to cleartext path
+        #[arg(short, long)]
+        decrypt: bool,
     },
 }
 
@@ -102,15 +106,59 @@ pub fn main() -> Result<()> {
                 &options,
             )?;
         }
-        Command::Translate { vault_path, path } => {
+        Command::Translate {
+            vault_path,
+            path,
+            decrypt,
+        } => {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
             let translator = Translator::new(&vault);
-            let dir_id = translator.get_dir_id(&path)?;
-            println!(
-                "{}",
-                translator.get_ciphertext_path(path, dir_id)?.display()
-            );
+
+            if decrypt {
+                let fs = EncryptedFileSystem::new(&vault);
+                let mut queue: VecDeque<(PathBuf, DirEntry)> = VecDeque::new();
+                queue.extend(fs.dir_entries("")?.into_iter().collect::<Vec<_>>());
+
+                while let Some((cleartext_path, entry)) = queue.pop_front() {
+                    let dir_id = translator.get_dir_id(cleartext_path.parent().unwrap())?;
+                    let ciphertext_path =
+                        translator.get_ciphertext_path(&cleartext_path, dir_id)?;
+
+                    if ciphertext_path == path {
+                        println!("{}", cleartext_path.display());
+                        return Ok(());
+                    } else if entry.kind == FileKind::Directory {
+                        queue.extend(
+                            fs.dir_entries(cleartext_path)?
+                                .into_iter()
+                                .collect::<Vec<_>>(),
+                        );
+                    }
+                }
+
+                bail!("unable to find a matching cleartext file path");
+            } else {
+                // First, try assuming it's a file
+                let dir_id = translator.get_dir_id(&path)?;
+                let file_path = translator.get_ciphertext_path(&path, &dir_id)?;
+
+                if file_path.exists() {
+                    println!("{}", file_path.display());
+                    return Ok(());
+                }
+
+                // Next, try assuming it's a directory
+                let parent_dir_id = translator.get_dir_id(path.parent().unwrap())?;
+                let dir_path = translator.get_ciphertext_path(&path, &parent_dir_id)?;
+
+                if dir_path.exists() {
+                    println!("{}", dir_path.display());
+                    return Ok(());
+                }
+
+                bail!("unable to find a matching ciphertext file path");
+            }
         }
     };
 

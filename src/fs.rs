@@ -19,17 +19,17 @@ pub use translator::Translator;
 use uuid::Uuid;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum FileKind {
+pub enum FileKind {
     File,
     Directory,
     Symlink,
 }
 
 #[derive(Debug)]
-struct DirEntry {
-    kind: FileKind,
-    size: u64,
-    metadata: Metadata,
+pub struct DirEntry {
+    pub kind: FileKind,
+    pub size: u64,
+    pub metadata: Metadata,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -118,7 +118,10 @@ impl<'v> EncryptedFileSystem<'v> {
         bail!("invalid or unknown ciphertext path: {ciphertext_path:?}");
     }
 
-    fn dir_entries(&self, cleartext_dir: impl AsRef<Path>) -> Result<BTreeMap<PathBuf, DirEntry>> {
+    pub fn dir_entries(
+        &self,
+        cleartext_dir: impl AsRef<Path>,
+    ) -> Result<BTreeMap<PathBuf, DirEntry>> {
         let dir_id = self.translator.get_dir_id(&cleartext_dir)?;
         let hashed_dir_id = self.vault.cryptor().hash_dir_id(&dir_id)?;
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);

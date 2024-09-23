@@ -43,9 +43,6 @@ pub enum Command {
         vault_path: PathBuf,
         /// Path to translate
         path: PathBuf,
-        /// Use breadth-first search to translate encrypted path to cleartext path
-        #[arg(short, long)]
-        decrypt: bool,
     },
 }
 
@@ -106,24 +103,26 @@ pub fn main() -> Result<()> {
                 &options,
             )?;
         }
-        Command::Translate {
-            vault_path,
-            path,
-            decrypt,
-        } => {
+        Command::Translate { vault_path, path } => {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
             let translator = Translator::new(&vault);
 
-            if decrypt {
+            // If the provided path is within the vault, we'll try to decrypt it
+            if path.exists() && path.canonicalize()?.starts_with(vault_path.canonicalize()?) {
+                tracing::debug!("encrypted path detected, attempting decryption");
+
+                let path = path.canonicalize()?;
                 let fs = EncryptedFileSystem::new(&vault);
                 let mut queue: VecDeque<(PathBuf, DirEntry)> = VecDeque::new();
                 queue.extend(fs.dir_entries("")?.into_iter().collect::<Vec<_>>());
 
+                // Breadth-first search of the filesystem
                 while let Some((cleartext_path, entry)) = queue.pop_front() {
                     let dir_id = translator.get_dir_id(cleartext_path.parent().unwrap())?;
                     let ciphertext_path =
-                        translator.get_ciphertext_path(&cleartext_path, dir_id)?;
+                        translator.get_ciphertext_path(&cleartext_path, &dir_id)?;
+                    tracing::debug!(?dir_id, ?cleartext_path, ?ciphertext_path);
 
                     if ciphertext_path == path {
                         println!("{}", cleartext_path.display());
@@ -137,8 +136,10 @@ pub fn main() -> Result<()> {
                     }
                 }
 
-                bail!("unable to find a matching cleartext file path");
+                bail!("failed to find matching cleartext path");
             } else {
+                tracing::debug!("cleartext path detected, attempting encryption");
+
                 // First, try assuming it's a file
                 let dir_id = translator.get_dir_id(&path)?;
                 let file_path = translator.get_ciphertext_path(&path, &dir_id)?;
@@ -159,7 +160,7 @@ pub fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                bail!("unable to find a matching ciphertext file path");
+                bail!("failed to find matching encrypted path");
             }
         }
     };

@@ -143,6 +143,7 @@ pub fn main() -> Result<()> {
                 let dir_id = translator.get_dir_id(&path)?;
                 let file_path = translator.get_ciphertext_path(&path, &dir_id)?;
 
+                tracing::debug!(?file_path, "looking for matching file path");
                 if file_path.exists() {
                     println!("{}", file_path.display());
                     return Ok(());
@@ -152,6 +153,7 @@ pub fn main() -> Result<()> {
                 let parent_dir_id = translator.get_dir_id(path.parent().unwrap())?;
                 let dir_path = translator.get_ciphertext_path(&path, &parent_dir_id)?;
 
+                tracing::debug!(?dir_path, "looking for matching directory path");
                 if dir_path.exists() {
                     println!("{}", dir_path.display());
                     return Ok(());

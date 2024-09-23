@@ -409,7 +409,7 @@ impl<'v> EncryptedFileSystem<'v> {
         if ciphertext_path.extension().unwrap() == "c9s" {
             let full_name = self
                 .translator
-                .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
+                .get_full_ciphertext_name(name, parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 

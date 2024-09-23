@@ -10,7 +10,7 @@ Usage: yombar [OPTIONS] <COMMAND>
 Commands:
   create     Create a new empty vault
   mount      Mount a vault as a virtual filesystem
-  translate  Translate a cleartext file path to an encrypted file path
+  translate  Translate between cleartext paths and encrypted paths
   help       Print this message or the help of the given subcommand(s)
 
 Options:

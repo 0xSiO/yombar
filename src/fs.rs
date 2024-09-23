@@ -209,7 +209,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ("c9r", "c9s") => {
                 let new_ciphertext_name = self
                     .translator
-                    .get_full_ciphertext_name(new_parent.as_ref().join(new_name), new_dir_id)?;
+                    .get_full_ciphertext_name(new_name, new_dir_id)?;
                 fs::create_dir_all(&new_ciphertext_path)?;
                 fs::write(new_ciphertext_path.join("name.c9s"), new_ciphertext_name)?;
                 fs::rename(
@@ -227,7 +227,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ("c9s", "c9s") => {
                 let new_ciphertext_name = self
                     .translator
-                    .get_full_ciphertext_name(new_parent.as_ref().join(new_name), new_dir_id)?;
+                    .get_full_ciphertext_name(new_name, new_dir_id)?;
                 fs::create_dir_all(&new_ciphertext_path)?;
                 fs::write(new_ciphertext_path.join("name.c9s"), new_ciphertext_name)?;
                 fs::rename(
@@ -278,7 +278,7 @@ impl<'v> EncryptedFileSystem<'v> {
             (_, "c9s") => {
                 let new_ciphertext_name = self
                     .translator
-                    .get_full_ciphertext_name(new_parent.as_ref().join(new_name), new_dir_id)?;
+                    .get_full_ciphertext_name(new_name, new_dir_id)?;
                 fs::create_dir_all(&new_ciphertext_path)?;
                 fs::write(new_ciphertext_path.join("name.c9s"), new_ciphertext_name)?;
                 fs::rename(
@@ -329,7 +329,7 @@ impl<'v> EncryptedFileSystem<'v> {
             (_, "c9s") => {
                 let new_ciphertext_name = self
                     .translator
-                    .get_full_ciphertext_name(new_parent.as_ref().join(new_name), new_dir_id)?;
+                    .get_full_ciphertext_name(new_name, new_dir_id)?;
                 fs::create_dir_all(&new_ciphertext_path)?;
                 fs::write(new_ciphertext_path.join("name.c9s"), new_ciphertext_name)?;
                 fs::rename(
@@ -375,7 +375,7 @@ impl<'v> EncryptedFileSystem<'v> {
             fs::create_dir_all(&ciphertext_path)?;
             let full_name = self
                 .translator
-                .get_full_ciphertext_name(parent.as_ref().join(name), parent_dir_id)?;
+                .get_full_ciphertext_name(name, parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
@@ -445,7 +445,7 @@ impl<'v> EncryptedFileSystem<'v> {
         if ciphertext_path.extension().unwrap() == "c9s" {
             let full_name = self
                 .translator
-                .get_full_ciphertext_name(parent.as_ref().join(link_name), parent_dir_id)?;
+                .get_full_ciphertext_name(link_name, parent_dir_id)?;
             fs::write(ciphertext_path.join("name.c9s"), full_name)?;
         }
 

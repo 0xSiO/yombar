@@ -495,6 +495,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
         match entry.kind {
             FileKind::File => {
+                // Ok to unwrap, top-level files will just have an empty parent
                 let parent_dir_id = self
                     .translator
                     .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
@@ -514,6 +515,7 @@ impl<'v> EncryptedFileSystem<'v> {
                 fs::set_permissions(self.vault.path().join("d").join(hashed_dir_id), permissions)?;
             }
             FileKind::Symlink => {
+                // Ok to unwrap, top-level links will just have an empty parent
                 let parent_dir_id = self
                     .translator
                     .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
@@ -532,6 +534,7 @@ impl<'v> EncryptedFileSystem<'v> {
 
         match entry.kind {
             FileKind::File => {
+                // Ok to unwrap, top-level files will just have an empty parent
                 let parent_dir_id = self
                     .translator
                     .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;
@@ -553,6 +556,7 @@ impl<'v> EncryptedFileSystem<'v> {
                 dir.set_times(times)?;
             }
             FileKind::Symlink => {
+                // Ok to unwrap, top-level links will just have an empty parent
                 let parent_dir_id = self
                     .translator
                     .get_dir_id(cleartext_path.as_ref().parent().unwrap())?;

@@ -1,6 +1,6 @@
 [package]
 name = "yombar"
-version = "0.0.0"
+version = "0.1.0"
 authors = ["Luc Street (@0xSiO)"]
 description = "A simpler, faster, and more lightweight implementation of Cryptomator using Rust."
 repository = "https://github.com/0xSiO/yombar"

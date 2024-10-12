@@ -12,7 +12,9 @@ use yombar::{
 
 #[derive(Debug, Parser)]
 #[command(version)]
+/// yombar: A simpler, faster, and more lightweight implementation of Cryptomator using Rust.
 pub struct Args {
+    /// Enable verbose output (can be specified multiple times)
     #[arg(short, long, action = ArgAction::Count)]
     verbose: u8,
     #[command(subcommand)]

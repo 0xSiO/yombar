@@ -16,9 +16,9 @@ base32ct = { version = "0.2", features = ["std"] }
 base64ct = { version = "1", features = ["std"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = { version = "0.6" }
-ctr = { version = "0.9", features = ["std"] }
+ctr = { version = "0.9", features = ["std", "zeroize"] }
 fd-lock = "4"
-hmac = "0.12"
+hmac = { version = "0.12", features = ["std"] }
 jsonwebtoken = { version = "9", default-features = false }
 libc = "0.2"
 rand_core = { version = "*", features = ["std"] }

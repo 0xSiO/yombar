@@ -2,17 +2,18 @@ use std::{fmt::Debug, fs, path::Path};
 
 use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rand_core::{self, OsRng, RngCore};
 use scrypt::{
     password_hash::{Salt, SaltString},
     Params,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{util, Result};
 
-pub const SUBKEY_LEN: usize = 32;
+pub(crate) const SUBKEY_LEN: usize = 32;
 
 #[derive(PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; SUBKEY_LEN * 2]);
@@ -29,7 +30,8 @@ impl MasterKey {
     /// # Safety
     ///
     /// - `bytes` should contain secret, random bytes with sufficient entropy
-    pub unsafe fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
+    #[cfg(test)]
+    pub(crate) unsafe fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
         MasterKey(bytes)
     }
 
@@ -41,11 +43,7 @@ impl MasterKey {
         self.0[SUBKEY_LEN..].try_into().unwrap()
     }
 
-    pub(crate) fn raw_key(&self) -> &[u8; SUBKEY_LEN * 2] {
-        &self.0
-    }
-
-    pub fn wrap(
+    pub(crate) fn wrap(
         &self,
         key_encryption_key: &KekAes256,
         scrypt_params: Params,
@@ -63,15 +61,38 @@ impl MasterKey {
             scrypt_params,
             enc_key: wrapped_enc_master_key.to_vec(),
             mac_key: wrapped_mac_master_key.to_vec(),
-            version_mac: util::hmac(&format_version.to_be_bytes(), self),
+            version_mac: util::hmac(self, &format_version.to_be_bytes()),
         })
     }
 
-    pub fn from_wrapped(wrapped_key: &WrappedKey, key_encryption_key: &KekAes256) -> Result<Self> {
+    pub(crate) fn from_wrapped(
+        wrapped_key: &WrappedKey,
+        key_encryption_key: &KekAes256,
+    ) -> Result<Self> {
         let mut buffer = [0_u8; SUBKEY_LEN * 2];
         key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LEN])?;
         key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LEN..])?;
         Ok(MasterKey(buffer))
+    }
+
+    pub(crate) fn sign_jwt(&self, header: Header, claims: impl Serialize) -> Result<String> {
+        Ok(jsonwebtoken::encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret(&self.0),
+        )?)
+    }
+
+    pub(crate) fn verify_jwt<T: DeserializeOwned>(
+        &self,
+        token: String,
+        validation: Validation,
+    ) -> Result<TokenData<T>> {
+        Ok(jsonwebtoken::decode(
+            &token,
+            &DecodingKey::from_secret(&self.0),
+            &validation,
+        )?)
     }
 }
 
@@ -83,7 +104,7 @@ impl Debug for MasterKey {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RawWrappedKey {
+struct RawWrappedKey {
     version: u32,
     scrypt_salt: String,
     scrypt_cost_param: u32,
@@ -94,7 +115,7 @@ pub struct RawWrappedKey {
 }
 
 #[derive(Debug)]
-pub struct WrappedKey {
+pub(crate) struct WrappedKey {
     pub(crate) scrypt_salt: SaltString,
     pub(crate) scrypt_params: Params,
     pub(crate) enc_key: Vec<u8>,
@@ -103,7 +124,7 @@ pub struct WrappedKey {
 }
 
 impl WrappedKey {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+    pub(crate) fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let json = fs::read_to_string(path)?;
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
         let recommended_params = Params::recommended();
@@ -123,7 +144,28 @@ impl WrappedKey {
         })
     }
 
-    pub fn as_raw(&self) -> RawWrappedKey {
+    pub(crate) fn salt(&self) -> Salt {
+        self.scrypt_salt.as_salt()
+    }
+
+    pub(crate) fn params(&self) -> Params {
+        self.scrypt_params
+    }
+
+    pub(crate) fn enc_key(&self) -> &[u8] {
+        &self.enc_key
+    }
+
+    pub(crate) fn mac_key(&self) -> &[u8] {
+        &self.mac_key
+    }
+
+    #[cfg(test)]
+    pub(crate) fn version_mac(&self) -> &[u8] {
+        &self.version_mac
+    }
+
+    fn as_raw(&self) -> RawWrappedKey {
         RawWrappedKey {
             version: 999,
             scrypt_salt: self.scrypt_salt.to_string(),
@@ -134,31 +176,22 @@ impl WrappedKey {
             version_mac: Base64::encode_string(&self.version_mac),
         }
     }
+}
 
-    pub fn salt(&self) -> Salt {
-        self.scrypt_salt.as_salt()
-    }
-
-    pub fn params(&self) -> Params {
-        self.scrypt_params
-    }
-
-    pub fn enc_key(&self) -> &[u8] {
-        &self.enc_key
-    }
-
-    pub fn mac_key(&self) -> &[u8] {
-        &self.mac_key
-    }
-
-    pub fn version_mac(&self) -> &[u8] {
-        &self.version_mac
+impl Serialize for WrappedKey {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_raw().serialize(serializer)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64, Encoding};
+    use jsonwebtoken::Algorithm;
+    use serde::Deserialize;
 
     use crate::util;
 
@@ -193,5 +226,39 @@ mod tests {
         );
 
         assert_eq!(MasterKey::from_wrapped(&wrapped_key, &kek).unwrap(), key);
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct ExampleClaims {
+        one: u32,
+        two: bool,
+        three: String,
+    }
+
+    #[test]
+    fn sign_and_verify_jwt_test() {
+        let key_bytes = [[30; SUBKEY_LEN], [40; SUBKEY_LEN]].concat();
+        let key = MasterKey(key_bytes.try_into().unwrap());
+
+        let header = Header::new(Algorithm::HS256);
+        let claims = ExampleClaims {
+            one: 10,
+            two: false,
+            three: String::from("test"),
+        };
+
+        let jwt = key.sign_jwt(header.clone(), claims.clone()).unwrap();
+        assert_eq!(
+            jwt,
+            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvbmUiOjEwLCJ0d28iOmZhbHNlLCJ0aHJlZSI6InRlc3QifQ.RAy9PledsRNGbbxzAWdzWu6M-mEsz3RecHJiMM3FyTE"
+        );
+
+        let mut validation = Validation::new(header.alg);
+        validation.validate_exp = false;
+        validation.required_spec_claims.clear();
+        let verified: TokenData<ExampleClaims> = key.verify_jwt(jwt, validation).unwrap();
+
+        assert_eq!(verified.header, header);
+        assert_eq!(verified.claims, claims);
     }
 }

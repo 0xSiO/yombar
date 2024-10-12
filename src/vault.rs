@@ -17,7 +17,8 @@ use uuid::Uuid;
 use crate::{
     crypto::{siv_ctrmac, siv_gcm, Cryptor},
     fs::{EncryptedFile, EncryptedFileSystem},
-    util, MasterKey, Result, WrappedKey,
+    key::{MasterKey, WrappedKey},
+    util, Result,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,7 +64,7 @@ impl Vault {
             cipher_combo: CipherCombo::SivGcm,
         };
 
-        let config_jwt = util::sign_jwt(header.clone(), claims, &master_key)?;
+        let config_jwt = master_key.sign_jwt(header.clone(), claims)?;
         let wrapped_key = master_key.wrap(&kek, params, salt_string, 8)?;
 
         fs::create_dir_all(path.as_ref())?;
@@ -77,7 +78,7 @@ impl Vault {
         fs::write(vault.path.join("vault.cryptomator"), config_jwt)?;
         fs::write(
             vault.path.join("masterkey.cryptomator"),
-            serde_json::to_string(&wrapped_key.as_raw())?,
+            serde_json::to_string(&wrapped_key)?,
         )?;
 
         let fs = EncryptedFileSystem::new(&vault);
@@ -111,7 +112,7 @@ impl Vault {
             validation.validate_exp = false;
             validation.required_spec_claims.clear();
 
-            let config: TokenData<VaultConfig> = util::verify_jwt(jwt, validation, &master_key)?;
+            let config: TokenData<VaultConfig> = master_key.verify_jwt(jwt, validation)?;
 
             // Only version 8 is supported for now
             match config.claims.format {
@@ -137,16 +138,12 @@ impl Vault {
         &self.config
     }
 
-    pub fn master_key(&self) -> &MasterKey {
-        &self.master_key
-    }
-
     pub fn cryptor(&self) -> Cryptor {
         match self.config().claims.cipher_combo {
             CipherCombo::SivCtrMac => {
-                Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(self.master_key()))
+                Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(&self.master_key))
             }
-            CipherCombo::SivGcm => Cryptor::SivGcm(siv_gcm::Cryptor::new(self.master_key())),
+            CipherCombo::SivGcm => Cryptor::SivGcm(siv_gcm::Cryptor::new(&self.master_key)),
         }
     }
 }

@@ -7,16 +7,19 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{crypto::FileCryptor, util, Result, Vault};
+use color_eyre::eyre::bail;
+use uuid::Uuid;
+
+use crate::{crypto::FileCryptor, util, vault::Vault, Result};
 
 mod encrypted_file;
-pub mod fuse;
 mod translator;
 
-use color_eyre::eyre::bail;
+#[cfg(unix)]
+pub mod fuse;
+
 pub use encrypted_file::EncryptedFile;
 pub use translator::Translator;
-use uuid::Uuid;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum FileKind {
@@ -46,14 +49,14 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    pub fn root_dir(&self) -> PathBuf {
+    pub(crate) fn root_dir(&self) -> PathBuf {
         self.vault
             .path()
             .join("d")
             .join(self.vault.cryptor().hash_dir_id("").unwrap())
     }
 
-    fn dir_entry(&self, cleartext_path: impl AsRef<Path>) -> Result<DirEntry> {
+    pub fn dir_entry(&self, cleartext_path: impl AsRef<Path>) -> Result<DirEntry> {
         if cleartext_path.as_ref().parent().is_none() {
             let metadata = self.root_dir().metadata()?;
             return Ok(DirEntry {
@@ -144,7 +147,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(cleartext_entries)
     }
 
-    fn link_target(&self, cleartext_path: impl AsRef<Path> + Debug) -> Result<PathBuf> {
+    pub fn link_target(&self, cleartext_path: impl AsRef<Path> + Debug) -> Result<PathBuf> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let ciphertext_path = self
             .translator
@@ -164,7 +167,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    fn open_file(
+    pub fn open_file(
         &self,
         cleartext_path: impl AsRef<Path>,
         options: OpenOptions,
@@ -181,7 +184,7 @@ impl<'v> EncryptedFileSystem<'v> {
         EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)
     }
 
-    fn rename_file(
+    pub fn rename_file(
         &self,
         old_parent: impl AsRef<Path>,
         old_name: &OsStr,
@@ -242,7 +245,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
-    fn rename_dir(
+    pub fn rename_dir(
         &self,
         old_parent: impl AsRef<Path>,
         old_name: &OsStr,
@@ -293,7 +296,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
-    fn rename_link(
+    pub fn rename_link(
         &self,
         old_parent: impl AsRef<Path>,
         old_name: &OsStr,
@@ -344,7 +347,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
-    fn rename(
+    pub fn rename(
         &self,
         old_parent: impl AsRef<Path>,
         old_name: &OsStr,
@@ -359,7 +362,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    fn mknod(
+    pub fn mknod(
         &self,
         parent: impl AsRef<Path> + Debug,
         name: &OsStr,
@@ -390,7 +393,7 @@ impl<'v> EncryptedFileSystem<'v> {
         })
     }
 
-    fn mkdir(
+    pub fn mkdir(
         &self,
         parent: impl AsRef<Path>,
         name: &OsStr,
@@ -428,7 +431,7 @@ impl<'v> EncryptedFileSystem<'v> {
         })
     }
 
-    fn symlink(
+    pub fn symlink(
         &self,
         parent: impl AsRef<Path>,
         link_name: &OsStr,
@@ -461,7 +464,7 @@ impl<'v> EncryptedFileSystem<'v> {
         })
     }
 
-    fn unlink(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
+    pub fn unlink(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
         let parent_dir_id = self.translator.get_dir_id(&parent)?;
         let ciphertext_path = self
             .translator
@@ -474,7 +477,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
     }
 
-    fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
+    pub fn rmdir(&self, parent: impl AsRef<Path>, name: &OsStr) -> Result<()> {
         let dir_id = self.translator.get_dir_id(parent.as_ref().join(name))?;
         let hashed_dir_id = self.vault.cryptor().hash_dir_id(dir_id)?;
         fs::remove_dir_all(self.vault.path().join("d").join(hashed_dir_id))?;
@@ -486,7 +489,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(fs::remove_dir_all(ciphertext_path)?)
     }
 
-    fn set_permissions(
+    pub fn set_permissions(
         &self,
         cleartext_path: impl AsRef<Path>,
         permissions: Permissions,
@@ -529,7 +532,7 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 
-    fn set_times(&self, cleartext_path: impl AsRef<Path>, times: FileTimes) -> Result<()> {
+    pub fn set_times(&self, cleartext_path: impl AsRef<Path>, times: FileTimes) -> Result<()> {
         let entry = self.dir_entry(&cleartext_path)?;
 
         match entry.kind {

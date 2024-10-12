@@ -6,10 +6,11 @@ use std::{
 };
 
 use base64ct::{Base64, Encoding};
-use jsonwebtoken::{TokenData, Validation};
 use uuid::Uuid;
 use yombar::{
-    crypto::FileCryptor, fs::EncryptedFile, util, CipherCombo, MasterKey, Vault, VaultConfig,
+    crypto::FileCryptor,
+    fs::EncryptedFile,
+    vault::{CipherCombo, Vault, VaultConfig},
 };
 
 #[test]
@@ -34,28 +35,6 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
             cipher_combo: CipherCombo::SivCtrMac
         }
     );
-
-    // Check key import
-    let key = vault.master_key();
-
-    assert_eq!(*key, unsafe {
-        MasterKey::from_bytes(
-            Base64::decode_vec("6RqWrWltqvYqQAowjweyJs8Hq/45NL3t/yIB/gVcubF8id+XIsrTnr7qfnd2YKLP/otupwsBCC+jaoIiduSxlw==")?
-                .try_into()
-                .unwrap(),
-        )
-    });
-
-    // Check JWT signing/verifying
-    let config_jwt = util::sign_jwt(vault.config().header.clone(), vault.config().claims, key)?;
-
-    let mut validation = Validation::new(vault.config().header.alg);
-    validation.validate_exp = false;
-    validation.required_spec_claims.clear();
-    let decoded_config: TokenData<VaultConfig> = util::verify_jwt(config_jwt, validation, key)?;
-
-    assert_eq!(decoded_config.header, vault.config().header);
-    assert_eq!(decoded_config.claims, vault.config().claims);
 
     // Check file name encryption/decryption
     let cryptor = vault.cryptor();
@@ -222,28 +201,6 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
             cipher_combo: CipherCombo::SivGcm
         }
     );
-
-    // Check key import
-    let key = vault.master_key();
-
-    assert_eq!(*key, unsafe {
-        MasterKey::from_bytes(
-            Base64::decode_vec("sXs8e6rKQX3iySTUkOd6V0FqaM3nqN/x8ULcUYdtBXQBSSDBbf8FEBAkUuGhpqot8leMQTfevZKICb7t8voIOQ==")?
-                .try_into()
-                .unwrap(),
-        )
-    });
-
-    // Check JWT signing/verifying
-    let config_jwt = util::sign_jwt(vault.config().header.clone(), vault.config().claims, key)?;
-
-    let mut validation = Validation::new(vault.config().header.alg);
-    validation.validate_exp = false;
-    validation.required_spec_claims.clear();
-    let decoded_config: TokenData<VaultConfig> = util::verify_jwt(config_jwt, validation, key)?;
-
-    assert_eq!(decoded_config.header, vault.config().header);
-    assert_eq!(decoded_config.claims, vault.config().claims);
 
     // Check file name encryption/decryption
     let cryptor = vault.cryptor();

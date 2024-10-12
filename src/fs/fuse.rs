@@ -102,7 +102,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn lookup(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
@@ -126,11 +126,11 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         }
     }
 
-    fn forget(&mut self, _req: &fuser::Request<'_>, ino: u64, _nlookup: u64) {
+    fn forget(&mut self, _req: &fuser::Request<'_>, ino: Inode, _nlookup: u64) {
         self.tree.forget(ino);
     }
 
-    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
+    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: Inode, reply: fuser::ReplyAttr) {
         if let Some(path) = self.tree.get_path(ino) {
             match self.fs.dir_entry(path) {
                 Ok(entry) => {
@@ -150,7 +150,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn setattr(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
+        ino: Inode,
         mode: Option<u32>,
         _uid: Option<u32>,
         _gid: Option<u32>,
@@ -239,7 +239,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         }
     }
 
-    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyData) {
+    fn readlink(&mut self, _req: &fuser::Request<'_>, ino: Inode, reply: fuser::ReplyData) {
         if let Some(path) = self.tree.get_path(ino) {
             match self.fs.link_target(path) {
                 Ok(target) => reply.data(target.as_os_str().as_bytes()),
@@ -257,7 +257,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn mknod(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         mode: u32,
         umask: u32,
@@ -287,7 +287,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn mkdir(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         mode: u32,
         umask: u32,
@@ -316,7 +316,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn unlink(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEmpty,
     ) {
@@ -337,7 +337,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn rmdir(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         reply: fuser::ReplyEmpty,
     ) {
@@ -371,7 +371,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn symlink(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         link_name: &std::ffi::OsStr,
         target: &std::path::Path,
         reply: fuser::ReplyEntry,
@@ -396,9 +396,9 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn rename(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
-        newparent: u64,
+        newparent: Inode,
         newname: &std::ffi::OsStr,
         _flags: u32,
         reply: fuser::ReplyEmpty,
@@ -422,7 +422,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         }
     }
 
-    fn open(&mut self, _req: &fuser::Request<'_>, ino: u64, flags: i32, reply: fuser::ReplyOpen) {
+    fn open(&mut self, _req: &fuser::Request<'_>, ino: Inode, flags: i32, reply: fuser::ReplyOpen) {
         if let Some(path) = self.tree.get_path(ino) {
             // We'll support opening files in either read mode or read-write mode
             let mut options = OpenOptions::new();
@@ -450,7 +450,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn read(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         offset: i64,
         size: u32,
@@ -495,7 +495,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn write(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         offset: i64,
         data: &[u8],
@@ -536,7 +536,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn flush(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         _lock_owner: u64,
         reply: fuser::ReplyEmpty,
@@ -557,7 +557,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn release(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         _flags: i32,
         _lock_owner: Option<u64>,
@@ -571,7 +571,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn fsync(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         datasync: bool,
         reply: fuser::ReplyEmpty,
@@ -598,7 +598,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn opendir(
         &mut self,
         _req: &fuser::Request<'_>,
-        ino: u64,
+        ino: Inode,
         _flags: i32,
         reply: fuser::ReplyOpen,
     ) {
@@ -623,7 +623,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn readdir(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         offset: i64,
         mut reply: fuser::ReplyDirectory,
@@ -648,7 +648,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn releasedir(
         &mut self,
         _req: &fuser::Request<'_>,
-        _ino: u64,
+        _ino: Inode,
         fh: u64,
         _flags: i32,
         reply: fuser::ReplyEmpty,
@@ -657,7 +657,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
-    fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {
+    fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: Inode, reply: fuser::ReplyStatfs) {
         match CString::new(self.fs.root_dir().as_os_str().as_bytes()) {
             Ok(root_dir) => {
                 let mut stats: libc::statvfs64 = unsafe { mem::zeroed() };
@@ -687,7 +687,7 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
     fn create(
         &mut self,
         _req: &fuser::Request<'_>,
-        parent: u64,
+        parent: Inode,
         name: &std::ffi::OsStr,
         mode: u32,
         umask: u32,

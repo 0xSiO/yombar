@@ -9,7 +9,10 @@ use rand_core::{OsRng, RngCore};
 use sha1::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
-use crate::{key::SUBKEY_LEN, MasterKey, Result};
+use crate::{
+    key::{MasterKey, SUBKEY_LEN},
+    Result,
+};
 
 use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
 

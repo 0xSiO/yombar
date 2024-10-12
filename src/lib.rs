@@ -1,12 +1,7 @@
 pub mod crypto;
 pub mod fs;
-mod key;
-pub mod util;
-mod vault;
-
-pub use self::{
-    key::{MasterKey, WrappedKey},
-    vault::{CipherCombo, Vault, VaultConfig},
-};
+pub mod key;
+mod util;
+pub mod vault;
 
 pub type Result<T> = color_eyre::Result<T>;

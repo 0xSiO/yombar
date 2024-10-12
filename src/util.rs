@@ -2,22 +2,20 @@ use std::io::{self, Read};
 
 use aes_kw::{Kek, KekAes256};
 use hmac::{Hmac, Mac};
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
-use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroize;
 
 use crate::{
     crypto::{Cryptor, FileCryptor},
-    key::SUBKEY_LEN,
-    MasterKey, Result,
+    key::{MasterKey, SUBKEY_LEN},
+    Result,
 };
 
-pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
+pub(crate) fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
     let password_hash =
         Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
     // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
@@ -31,7 +29,7 @@ pub fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<Ke
     Ok(Kek::from(kek_bytes))
 }
 
-pub fn hmac(data: &[u8], key: &MasterKey) -> Vec<u8> {
+pub(crate) fn hmac(key: &MasterKey, data: &[u8]) -> Vec<u8> {
     Hmac::<Sha256>::new_from_slice(key.mac_key())
         // Ok to unwrap, HMAC can take keys of any size
         .unwrap()
@@ -41,29 +39,9 @@ pub fn hmac(data: &[u8], key: &MasterKey) -> Vec<u8> {
         .to_vec()
 }
 
-pub fn sign_jwt(header: Header, claims: impl Serialize, key: &MasterKey) -> Result<String> {
-    Ok(jsonwebtoken::encode(
-        &header,
-        &claims,
-        &EncodingKey::from_secret(key.raw_key()),
-    )?)
-}
-
-pub fn verify_jwt<T: DeserializeOwned>(
-    token: String,
-    validation: Validation,
-    key: &MasterKey,
-) -> Result<TokenData<T>> {
-    Ok(jsonwebtoken::decode(
-        &token,
-        &DecodingKey::from_secret(key.raw_key()),
-        &validation,
-    )?)
-}
-
-/// A modified version of read_exact that ignores an unexpected EOF, returning whether the whole
-/// buffer could be filled and the number of bytes read.
-pub fn try_read_exact(mut this: impl Read, mut buf: &mut [u8]) -> io::Result<(bool, usize)> {
+/// A modified version of [`Read::read_exact`] that ignores an unexpected EOF, returning whether
+/// the whole buffer could be filled and the number of bytes read.
+pub(crate) fn try_read_exact(mut this: impl Read, mut buf: &mut [u8]) -> io::Result<(bool, usize)> {
     let mut bytes_read: usize = 0;
     while !buf.is_empty() {
         match this.read(buf) {
@@ -79,7 +57,7 @@ pub fn try_read_exact(mut this: impl Read, mut buf: &mut [u8]) -> io::Result<(bo
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
+pub(crate) fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
     let max_enc_chunk_len = cryptor.max_encrypted_chunk_len() as u64;
     let max_chunk_len = cryptor.max_chunk_len() as u64;
     let enc_chunks_len = ciphertext_size - cryptor.encrypted_header_len() as u64;
@@ -91,9 +69,7 @@ pub fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64, Encoding};
-    use jsonwebtoken::Algorithm;
     use scrypt::password_hash::SaltString;
-    use serde::Deserialize;
 
     use super::*;
 
@@ -133,43 +109,8 @@ mod tests {
         // Safe, this is for test purposes only
         let key = unsafe { MasterKey::from_bytes([15_u8; SUBKEY_LEN * 2]) };
         assert_eq!(
-            Base64::encode_string(&hmac(b"here is some data", &key)),
+            Base64::encode_string(&hmac(&key, b"here is some data")),
             "CWTyTEOJ2pDGgMpGjHgQV8T+EjEJYliXRQL2XzgT1W0="
         );
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    struct ExampleClaims {
-        one: u32,
-        two: bool,
-        three: String,
-    }
-
-    #[test]
-    fn sign_and_verify_jwt_test() {
-        let key_bytes = [[30; SUBKEY_LEN], [40; SUBKEY_LEN]].concat();
-        // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes(key_bytes.try_into().unwrap()) };
-
-        let header = Header::new(Algorithm::HS256);
-        let claims = ExampleClaims {
-            one: 10,
-            two: false,
-            three: String::from("test"),
-        };
-
-        let jwt = sign_jwt(header.clone(), claims.clone(), &key).unwrap();
-        assert_eq!(
-            jwt,
-            "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJvbmUiOjEwLCJ0d28iOmZhbHNlLCJ0aHJlZSI6InRlc3QifQ.RAy9PledsRNGbbxzAWdzWu6M-mEsz3RecHJiMM3FyTE"
-        );
-
-        let mut validation = Validation::new(header.alg);
-        validation.validate_exp = false;
-        validation.required_spec_claims.clear();
-        let verified: TokenData<ExampleClaims> = verify_jwt(jwt, validation, &key).unwrap();
-
-        assert_eq!(verified.header, header);
-        assert_eq!(verified.claims, claims);
     }
 }

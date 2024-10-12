@@ -17,7 +17,7 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn new(nonce_len: usize, payload_len: usize) -> Result<Self> {
+    fn new(nonce_len: usize, payload_len: usize) -> Result<Self> {
         let mut nonce = vec![0_u8; nonce_len];
         OsRng.try_fill_bytes(&mut nonce)?;
 

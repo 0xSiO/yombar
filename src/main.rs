@@ -2,12 +2,12 @@ use std::{collections::VecDeque, env, fs, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 use color_eyre::eyre::bail;
-use fuser::MountOption;
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
-    fs::{fuse::FuseFileSystem, DirEntry, EncryptedFileSystem, FileKind, Translator},
-    Result, Vault,
+    fs::{DirEntry, EncryptedFileSystem, FileKind, Translator},
+    vault::Vault,
+    Result,
 };
 
 #[derive(Debug, Parser)]
@@ -87,22 +87,31 @@ pub fn main() -> Result<()> {
         } => {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
-            let mut options = vec![
-                MountOption::FSName(String::from("yombar")),
-                MountOption::DefaultPermissions,
-            ];
 
-            if read_only {
-                options.push(MountOption::RO);
+            #[cfg(unix)]
+            {
+                use fuser::MountOption;
+                use yombar::fs::fuse::FuseFileSystem;
+                let mut options = vec![
+                    MountOption::FSName(String::from("yombar")),
+                    MountOption::DefaultPermissions,
+                ];
+
+                if read_only {
+                    options.push(MountOption::RO);
+                }
+
+                fs::create_dir_all(&mount_point)?;
+
+                fuser::mount2(
+                    FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
+                    &mount_point,
+                    &options,
+                )?;
             }
 
-            fs::create_dir_all(&mount_point)?;
-
-            fuser::mount2(
-                FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
-                &mount_point,
-                &options,
-            )?;
+            #[cfg(windows)]
+            bail!("Windows support not yet implemented");
         }
         Command::Translate { vault_path, path } => {
             let password = rpassword::prompt_password("Password: ")?;

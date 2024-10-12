@@ -15,7 +15,10 @@ use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::{key::SUBKEY_LEN, util, MasterKey, Result};
+use crate::{
+    key::{MasterKey, SUBKEY_LEN},
+    util, Result,
+};
 
 use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
 
@@ -117,7 +120,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
         buffer.extend(&header.nonce);
         buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce)?);
-        buffer.extend(util::hmac(&buffer, self.key));
+        buffer.extend(util::hmac(self.key, &buffer));
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
         Ok(buffer)
     }
@@ -132,7 +135,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         let expected_mac = &encrypted_header[NONCE_LEN + PAYLOAD_LEN..];
 
         // First, verify the HMAC
-        let actual_mac = util::hmac(&encrypted_header[..NONCE_LEN + PAYLOAD_LEN], self.key);
+        let actual_mac = util::hmac(self.key, &encrypted_header[..NONCE_LEN + PAYLOAD_LEN]);
         if actual_mac != expected_mac {
             bail!("failed to verify header MAC");
         }

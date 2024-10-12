@@ -129,7 +129,7 @@ impl<'k> FileCryptor for Cryptor<'k> {
         }
 
         // Ok to start slicing, we've checked the length
-        let expected_mac = encrypted_header[NONCE_LEN + PAYLOAD_LEN..].to_vec();
+        let expected_mac = &encrypted_header[NONCE_LEN + PAYLOAD_LEN..];
 
         // First, verify the HMAC
         let actual_mac = util::hmac(&encrypted_header[..NONCE_LEN + PAYLOAD_LEN], self.key);
@@ -242,10 +242,10 @@ mod tests {
             nonce: vec![19; NONCE_LEN],
             payload: vec![23; PAYLOAD_LEN],
         };
-        let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
+        let chunk = b"the quick brown fox jumps over the lazy dog";
 
         let ciphertext = cryptor
-            .encrypt_chunk_with_nonce(&[0; NONCE_LEN], &chunk, &header, 2)
+            .encrypt_chunk_with_nonce(&[0; NONCE_LEN], chunk, &header, 2)
             .unwrap();
         assert_eq!(
             Base64::encode_string(&ciphertext),

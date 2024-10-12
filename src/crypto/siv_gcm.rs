@@ -157,11 +157,11 @@ impl<'k> FileCryptor for Cryptor<'k> {
 
         // Ok to start slicing, we've checked the length
         let nonce = encrypted_header[..NONCE_LEN].to_vec();
-        let encrypted_payload = encrypted_header[NONCE_LEN..NONCE_LEN + PAYLOAD_LEN].to_vec();
-        let tag = encrypted_header[NONCE_LEN + PAYLOAD_LEN..].to_vec();
+        let encrypted_payload = &encrypted_header[NONCE_LEN..NONCE_LEN + PAYLOAD_LEN];
+        let tag = &encrypted_header[NONCE_LEN + PAYLOAD_LEN..];
 
         let payload =
-            self.aes_gcm_decrypt(&encrypted_payload, self.key.enc_key(), &nonce, &[], &tag)?;
+            self.aes_gcm_decrypt(encrypted_payload, self.key.enc_key(), &nonce, &[], tag)?;
 
         Ok(FileHeader { nonce, payload })
     }
@@ -259,10 +259,10 @@ mod tests {
             nonce: vec![19; NONCE_LEN],
             payload: vec![23; PAYLOAD_LEN],
         };
-        let chunk = b"the quick brown fox jumps over the lazy dog".to_vec();
+        let chunk = b"the quick brown fox jumps over the lazy dog";
 
         let ciphertext = cryptor
-            .encrypt_chunk_with_nonce(&[0; NONCE_LEN], &chunk, &header, 2)
+            .encrypt_chunk_with_nonce(&[0; NONCE_LEN], chunk, &header, 2)
             .unwrap();
         assert_eq!(
             Base64::encode_string(&ciphertext),

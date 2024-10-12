@@ -88,7 +88,7 @@ pub fn main() -> Result<()> {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             {
                 use fuser::MountOption;
                 use yombar::fs::fuse::FuseFileSystem;
@@ -110,8 +110,8 @@ pub fn main() -> Result<()> {
                 )?;
             }
 
-            #[cfg(windows)]
-            bail!("Windows support not yet implemented");
+            #[cfg(not(target_os = "linux"))]
+            bail!("mounting on {} is not supported", std::env::consts::OS);
         }
         Command::Translate { vault_path, path } => {
             let password = rpassword::prompt_password("Password: ")?;

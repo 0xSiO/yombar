@@ -1,7 +1,9 @@
 use std::{
     collections::BTreeMap,
+    ffi::CString,
     fs::{FileTimes, OpenOptions, Permissions},
     io::{Seek, SeekFrom, Write},
+    mem,
     os::unix::{
         ffi::OsStrExt,
         fs::{MetadataExt, PermissionsExt},
@@ -655,8 +657,32 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         reply.ok();
     }
 
-    // TODO: Implement this
-    // fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {}
+    fn statfs(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyStatfs) {
+        match CString::new(self.fs.root_dir().as_os_str().as_bytes()) {
+            Ok(root_dir) => {
+                let mut stats: libc::statvfs64 = unsafe { mem::zeroed() };
+                let ret = unsafe { libc::statvfs64(root_dir.as_ptr(), &mut stats) };
+                if ret == 0 {
+                    reply.statfs(
+                        stats.f_blocks,
+                        stats.f_bfree,
+                        stats.f_bavail,
+                        stats.f_files,
+                        stats.f_ffree,
+                        stats.f_bsize as u32,
+                        stats.f_namemax as u32,
+                        stats.f_frsize as u32,
+                    );
+                } else {
+                    reply.error(libc::ENOSYS);
+                }
+            }
+            Err(err) => {
+                tracing::error!("{err:?}");
+                reply.error(libc::EIO);
+            }
+        }
+    }
 
     fn create(
         &mut self,

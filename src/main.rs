@@ -96,7 +96,6 @@ pub fn main() -> Result<()> {
 
             fs::create_dir_all(&mount_point)?;
 
-            // TODO: Maybe spawn in background, wait for exit signal, and drop session
             fuser::mount2(
                 FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
                 &mount_point,

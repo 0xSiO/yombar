@@ -23,13 +23,13 @@ Options:
 
 Below are some rough performance comparisons between Cryptomator and `yombar` for common tasks.
 
-Using: Cryptomator 1.14.0, `yombar` [fc26e0d](https://github.com/0xSiO/yombar/tree/fc26e0dc1f7d0c5b9814260d91d0911d3f14db01)
+Using: Cryptomator 1.14.0, `yombar` [393de15](https://github.com/0xSiO/yombar/tree/393de158e17b9cdff1b417525018234c992fb9d5)
 
 OS: Linux 6.10.12
 
 ### Directory List / Search
 
-I found `yombar` to be about **1.3x** faster on the first run, and about **9.6x** faster on subsequent runs.
+I found `yombar` to be about **1.1x** faster on the first run, and about **10x** faster on subsequent runs.
 
 <details>
 <summary>Click for test details</summary>
@@ -48,59 +48,58 @@ Start Cryptomator and mount vault.
 ```sh
 $ cd /path/to/virtual/cryptomator/vault
 
-$ time fd | wc -l
-13206
-fd  0.57s user 0.88s system 14% cpu 9.772 total
-wc -l  0.01s user 0.05s system 0% cpu 9.772 total
+$ time fd > /dev/null
+fd > /dev/null  0.45s user 0.73s system 14% cpu 7.972 total
 
-$ time fd | wc -l
+$ time fd > /dev/null
+fd > /dev/null  0.53s user 0.85s system 15% cpu 8.908 total
+
+$ fd | wc -l
 13206
-fd  0.51s user 0.66s system 13% cpu 8.666 total
-wc -l  0.00s user 0.04s system 0% cpu 8.665 total
 ```
 
 Unmount drive, mount again, and warm up underlying caches like before. Start `yombar` and mount vault.
 ```sh
 $ cd /path/to/virtual/yombar/vault
 
-$ time fd | wc -l
-13206
-fd  0.39s user 0.61s system 13% cpu 7.258 total
-wc -l  0.01s user 0.04s system 0% cpu 7.257 total
+$ time fd > /dev/null
+fd > /dev/null  0.34s user 0.56s system 12% cpu 7.380 total
 
-$ time fd | wc -l
+$ time fd > /dev/null
+fd > /dev/null  0.15s user 0.24s system 44% cpu 0.880 total
+
+$ fd | wc -l
 13206
-fd  0.15s user 0.23s system 41% cpu 0.902 total
-wc -l  0.00s user 0.01s system 1% cpu 0.901 total
 ```
 
 </details>
 
 ### Sequential Reads / Writes
 
-I found `yombar` to be about **1.4x** faster for sequential reads, and about **1.9x** faster for sequential writes.
+I found `yombar` to be about **1.5x** faster for both sequential reads and sequential writes.
 
 <details>
 <summary>Click for test details</summary>
 
 Drive: Samsung MZVL22T0HBLB 2TB, btrfs filesystem with LUKS2 encryption
 
+Using a large video file:
+```sh
+$ du -h large_video_file.mkv
+8.4G    large_video_file.mkv
+```
+
 Start Cryptomator and mount vault.
 ```sh
 $ cd /path/to/virtual/cryptomator/vault
 
 # Read
-$ time /bin/cat large_video_file.mkv | pv > /dev/null
-7.54GiB 0:00:11 [ 700MiB/s] [                         <=>                 ]
-/bin/cat large_video_file.mkv  0.05s user 5.41s system 49% cpu 11.026 total
-pv > /dev/null  0.14s user 1.59s system 15% cpu 11.025 total
+$ time /bin/cat large_video_file.mkv > /dev/null
+/bin/cat large_video_file.mkv > /dev/null  0.05s user 4.23s system 40% cpu 10.637 total
 
 # Write
-$ rm large_video_file.mkv
-$ time /bin/cat /path/to/original/large_video_file.mkv | pv > ./large_video_file.mkv
-7.54GiB 0:01:13 [ 104MiB/s] [                                   <=>       ]
-/bin/cat /path/to/original/large_video_file.mkv  0.16s user 8.68s system 11% cpu 1:13.83 total
-pv > ./large_video_file.mkv  0.36s user 9.86s system 13% cpu 1:13.82 total
+$ time /bin/cat ~/original/large_video_file.mkv > ./large_video_file.mkv
+/bin/cat ~/original/large_video_file.mkv > ./large_video_file.mkv  0.16s user 9.42s system 19% cpu 48.362 total
 ```
 
 Start `yombar` and mount vault.
@@ -108,17 +107,12 @@ Start `yombar` and mount vault.
 $ cd /path/to/virtual/yombar/vault
 
 # Read
-time /bin/cat large_video_file.mkv | pv > /dev/null
-7.54GiB 0:00:08 [ 956MiB/s] [                   <=>                      ]
-/bin/cat large_video_file.mkv  0.02s user 3.01s system 37% cpu 8.074 total
-pv > /dev/null  0.04s user 0.60s system 7% cpu 8.074 total
+$ time /bin/cat ./large_video_file.mkv > /dev/null
+/bin/cat ./large_video_file.mkv > /dev/null  0.02s user 1.71s system 24% cpu 6.932 total
 
 # Write
-$ rm large_video_file.mkv
-$ time /bin/cat /path/to/original/large_video_file.mkv | pv > ./large_video_file.mkv
-7.54GiB 0:00:39 [ 194MiB/s] [                      <=>                   ]
-/bin/cat /path/to/original/large_video_file.mkv  0.10s user 5.25s system 13% cpu 39.631 total
-pv > ./large_video_file.mkv  0.25s user 6.88s system 17% cpu 39.630 total
+$ time /bin/cat ~/original/large_video_file.mkv > ./large_video_file.mkv
+/bin/cat ~/original/large_video_file.mkv > ./large_video_file.mkv  0.13s user 6.50s system 20% cpu 32.880 total
 ```
 
 </details>

@@ -17,6 +17,7 @@ mod translator;
 
 #[cfg(target_os = "linux")]
 pub mod fuse;
+#[cfg(not(target_os = "linux"))]
 pub mod webdav;
 
 pub use encrypted_file::EncryptedFile;

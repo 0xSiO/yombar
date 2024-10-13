@@ -49,8 +49,7 @@ pub enum Command {
 }
 
 #[instrument]
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     color_eyre::install()?;
 
     let args = Args::parse();
@@ -89,29 +88,6 @@ async fn main() -> Result<()> {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 
-            // #[cfg(target_os = "macos")]
-            {
-                use axum::{routing::any, Router};
-                use dav_server::{memls::MemLs, DavHandler};
-                use yombar::fs::webdav::WebDavFileSystem;
-
-                let vault: &'static Vault = Box::leak(Box::new(vault));
-                let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
-                let webdav_server = DavHandler::builder()
-                    .filesystem(Box::new(webdav_fs))
-                    .locksystem(MemLs::new())
-                    .build_handler();
-
-                let webdav_router: Router<()> = Router::new().route(
-                    "/*path",
-                    any(|req| async move { webdav_server.handle(req).await }),
-                );
-                let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-                axum::serve(listener, webdav_router).await?;
-
-                return Ok(());
-            }
-
             #[cfg(target_os = "linux")]
             {
                 use fuser::MountOption;
@@ -136,7 +112,31 @@ async fn main() -> Result<()> {
             }
 
             #[cfg(not(target_os = "linux"))]
-            bail!("mounting on {} is not supported", std::env::consts::OS);
+            {
+                use axum::routing::any;
+                use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
+                use yombar::fs::webdav::WebDavFileSystem;
+
+                let vault: &'static Vault = Box::leak(Box::new(vault));
+                let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
+                let webdav_server = DavHandler::builder()
+                    .methods(DavMethodSet::WEBDAV_RO)
+                    .filesystem(Box::new(webdav_fs))
+                    .locksystem(MemLs::new())
+                    .build_handler();
+
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(async move {
+                    let listener = tokio::net::TcpListener::bind("0.0.0.0:4918").await.unwrap();
+
+                    tracing::info!(addr = %listener.local_addr().unwrap(), "starting WebDAV server");
+                    axum::serve(
+                        listener,
+                        any(|req| async move { webdav_server.handle(req).await }),
+                    )
+                    .await.unwrap();
+                });
+            }
         }
         Command::Translate { vault_path, path } => {
             let password = rpassword::prompt_password("Password: ")?;

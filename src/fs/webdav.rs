@@ -1,6 +1,8 @@
 use std::{
+    ffi::OsString,
     fs::OpenOptions,
     io::{Read, Seek, SeekFrom, Write},
+    os::unix::ffi::OsStrExt,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -8,7 +10,8 @@ use bytes::{Buf, Bytes, BytesMut};
 use dav_server::{
     davpath::DavPath,
     fs::{
-        DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsFuture, FsResult, FsStream, ReadDirMeta,
+        DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsError, FsFuture, FsResult, FsStream,
+        ReadDirMeta,
     },
 };
 
@@ -45,6 +48,21 @@ impl DavMetaData for DirEntry {
 
     fn created(&self) -> FsResult<SystemTime> {
         Ok(self.metadata.created().unwrap_or(UNIX_EPOCH))
+    }
+}
+
+struct WebDavDirEntry {
+    name: OsString,
+    dir_entry: DirEntry,
+}
+
+impl DavDirEntry for WebDavDirEntry {
+    fn name(&self) -> Vec<u8> {
+        self.name.as_bytes().to_vec()
+    }
+
+    fn metadata(&self) -> FsFuture<Box<dyn DavMetaData>> {
+        Box::pin(async move { Ok(Box::new(self.dir_entry.clone()) as _) })
     }
 }
 
@@ -133,19 +151,31 @@ impl DavFileSystem for WebDavFileSystem {
 
     fn read_dir<'a>(
         &'a self,
-        _path: &'a DavPath,
+        path: &'a DavPath,
         _meta: ReadDirMeta,
     ) -> FsFuture<FsStream<Box<dyn DavDirEntry>>> {
         Box::pin(async move {
-            // let dir_entries = self.fs.dir_entries(path.as_rel_ospath()).unwrap();
+            let dir_entries = self.fs.dir_entries(path.as_rel_ospath()).unwrap();
 
-            Ok(Box::pin(futures_util::stream::empty()) as _)
+            Ok(
+                Box::pin(futures_util::stream::iter(dir_entries.into_iter().map(
+                    |(path, dir_entry)| {
+                        FsResult::Ok(Box::new(WebDavDirEntry {
+                            name: path.file_name().unwrap().to_owned(),
+                            dir_entry,
+                        }) as Box<dyn DavDirEntry>)
+                    },
+                ))) as _,
+            )
         })
     }
 
     fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
         Box::pin(async move {
-            let dir_entry = self.fs.dir_entry(path.as_rel_ospath()).unwrap();
+            let dir_entry = self
+                .fs
+                .dir_entry(path.as_rel_ospath())
+                .map_err(|_| FsError::NotFound)?;
             Ok(Box::new(dir_entry) as _)
         })
     }

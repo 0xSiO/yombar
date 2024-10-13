@@ -49,7 +49,8 @@ pub enum Command {
 }
 
 #[instrument]
-pub fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     color_eyre::install()?;
 
     let args = Args::parse();
@@ -88,10 +89,34 @@ pub fn main() -> Result<()> {
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 
+            // #[cfg(target_os = "macos")]
+            {
+                use axum::{routing::any, Router};
+                use dav_server::{memls::MemLs, DavHandler};
+                use yombar::fs::webdav::WebDavFileSystem;
+
+                let vault: &'static Vault = Box::leak(Box::new(vault));
+                let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
+                let webdav_server = DavHandler::builder()
+                    .filesystem(Box::new(webdav_fs))
+                    .locksystem(MemLs::new())
+                    .build_handler();
+
+                let webdav_router: Router<()> = Router::new().route(
+                    "/*path",
+                    any(|req| async move { webdav_server.handle(req).await }),
+                );
+                let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+                axum::serve(listener, webdav_router).await?;
+
+                return Ok(());
+            }
+
             #[cfg(target_os = "linux")]
             {
                 use fuser::MountOption;
                 use yombar::fs::fuse::FuseFileSystem;
+
                 let mut options = vec![
                     MountOption::FSName(String::from("yombar")),
                     MountOption::DefaultPermissions,

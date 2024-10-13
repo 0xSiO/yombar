@@ -17,6 +17,7 @@ mod translator;
 
 #[cfg(target_os = "linux")]
 pub mod fuse;
+pub mod webdav;
 
 pub use encrypted_file::EncryptedFile;
 pub use translator::Translator;
@@ -28,7 +29,7 @@ pub enum FileKind {
     Symlink,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DirEntry {
     pub kind: FileKind,
     pub size: u64,

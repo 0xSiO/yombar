@@ -13,6 +13,7 @@ use crate::{
     util, Result,
 };
 
+#[derive(Debug)]
 pub struct EncryptedFile<'k> {
     cryptor: Cryptor<'k>,
     file: RwLock<File>,

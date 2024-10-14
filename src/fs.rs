@@ -15,9 +15,8 @@ use crate::{crypto::FileCryptor, util, vault::Vault, Result};
 mod encrypted_file;
 mod translator;
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub mod fuse;
-#[cfg(not(target_os = "linux"))]
 pub mod webdav;
 
 pub use encrypted_file::EncryptedFile;

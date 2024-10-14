@@ -1,6 +1,5 @@
 use std::{
     ffi::OsString,
-    fs::OpenOptions,
     io::{Read, Seek, SeekFrom, Write},
     os::unix::ffi::OsStrExt,
     time::{SystemTime, UNIX_EPOCH},
@@ -11,7 +10,7 @@ use dav_server::{
     davpath::DavPath,
     fs::{
         DavDirEntry, DavFile, DavFileSystem, DavMetaData, FsError, FsFuture, FsResult, FsStream,
-        ReadDirMeta,
+        OpenOptions, ReadDirMeta,
     },
 };
 
@@ -126,14 +125,10 @@ impl WebDavFileSystem {
 }
 
 impl DavFileSystem for WebDavFileSystem {
-    fn open<'a>(
-        &'a self,
-        path: &'a DavPath,
-        options: dav_server::fs::OpenOptions,
-    ) -> FsFuture<Box<dyn DavFile>> {
+    fn open<'a>(&'a self, path: &'a DavPath, options: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
         Box::pin(async move {
             // We'll support opening files in either read mode or read-write mode
-            let mut open_options = OpenOptions::new();
+            let mut open_options = std::fs::OpenOptions::new();
             open_options.read(true).write(options.write);
 
             let dir_entry = self.fs.dir_entry(path.as_rel_ospath()).unwrap();

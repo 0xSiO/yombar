@@ -1,11 +1,13 @@
-use std::{collections::VecDeque, env, fs, path::PathBuf};
+use std::{collections::VecDeque, env, path::PathBuf};
 
+use axum::routing::any;
 use clap::{ArgAction, Parser, Subcommand};
 use color_eyre::eyre::bail;
+use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
-    fs::{DirEntry, EncryptedFileSystem, FileKind, Translator},
+    fs::{webdav::WebDavFileSystem, DirEntry, EncryptedFileSystem, FileKind, Translator},
     vault::Vault,
     Result,
 };
@@ -29,13 +31,22 @@ pub enum Command {
         /// Path to directory in which to initialize the vault
         vault_path: PathBuf,
     },
-    /// Mount a vault as a virtual filesystem
+    /// Mount a vault as a virtual filesystem using FUSE
+    #[cfg(unix)]
     Mount {
         /// Path to encrypted vault directory
         vault_path: PathBuf,
         /// Path to directory in which to mount the virtual filesystem
         mount_point: PathBuf,
         /// Mount vault as a read-only filesystem
+        #[arg(short, long)]
+        read_only: bool,
+    },
+    /// Serve a vault from a local WebDAV server
+    Serve {
+        /// Path to encrypted vault directory
+        vault_path: PathBuf,
+        /// Only allow read-only HTTP methods
         #[arg(short, long)]
         read_only: bool,
     },
@@ -80,63 +91,68 @@ fn main() -> Result<()> {
             let password = rpassword::prompt_password("Set password: ")?;
             Vault::create(vault_path, password)?;
         }
+        #[cfg(unix)]
         Command::Mount {
             vault_path,
             mount_point,
             read_only,
         } => {
+            use fuser::MountOption;
+            use yombar::fs::fuse::FuseFileSystem;
+
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 
-            #[cfg(target_os = "linux")]
-            {
-                use fuser::MountOption;
-                use yombar::fs::fuse::FuseFileSystem;
+            let mut mount_options = vec![
+                MountOption::FSName(String::from("yombar")),
+                MountOption::DefaultPermissions,
+            ];
 
-                let mut options = vec![
-                    MountOption::FSName(String::from("yombar")),
-                    MountOption::DefaultPermissions,
-                ];
-
-                if read_only {
-                    options.push(MountOption::RO);
-                }
-
-                fs::create_dir_all(&mount_point)?;
-
-                fuser::mount2(
-                    FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
-                    &mount_point,
-                    &options,
-                )?;
+            if read_only {
+                mount_options.push(MountOption::RO);
             }
 
-            #[cfg(not(target_os = "linux"))]
-            {
-                use axum::routing::any;
-                use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
-                use yombar::fs::webdav::WebDavFileSystem;
+            std::fs::create_dir_all(&mount_point)?;
 
-                let vault: &'static Vault = Box::leak(Box::new(vault));
-                let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
-                let webdav_server = DavHandler::builder()
-                    .methods(DavMethodSet::WEBDAV_RO)
-                    .filesystem(Box::new(webdav_fs))
-                    .locksystem(MemLs::new())
-                    .build_handler();
+            fuser::mount2(
+                FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
+                &mount_point,
+                &mount_options,
+            )?;
+        }
+        Command::Serve {
+            vault_path,
+            read_only,
+        } => {
+            let password = rpassword::prompt_password("Password: ")?;
+            let vault = Vault::open(&vault_path, password)?;
 
-                let rt = tokio::runtime::Runtime::new()?;
-                rt.block_on(async move {
-                    let listener = tokio::net::TcpListener::bind("0.0.0.0:4918").await.unwrap();
+            let vault: &'static Vault = Box::leak(Box::new(vault));
+            let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
+            let permitted_methods = if read_only {
+                DavMethodSet::WEBDAV_RO
+            } else {
+                DavMethodSet::WEBDAV_RW
+            };
 
-                    tracing::info!(addr = %listener.local_addr().unwrap(), "starting WebDAV server");
-                    axum::serve(
-                        listener,
-                        any(|req| async move { webdav_server.handle(req).await }),
-                    )
-                    .await.unwrap();
-                });
-            }
+            let webdav_server = DavHandler::builder()
+                .methods(permitted_methods)
+                .filesystem(Box::new(webdav_fs))
+                .locksystem(MemLs::new())
+                .build_handler();
+
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async move {
+                let listener = tokio::net::TcpListener::bind("0.0.0.0:4918").await.unwrap();
+
+                tracing::info!(addr = %listener.local_addr().unwrap(), "starting WebDAV server");
+                axum::serve(
+                    listener,
+                    any(|req| async move { webdav_server.handle(req).await }),
+                )
+                .await
+                .unwrap();
+            });
         }
         Command::Translate { vault_path, path } => {
             let password = rpassword::prompt_password("Password: ")?;

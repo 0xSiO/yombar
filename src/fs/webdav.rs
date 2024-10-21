@@ -1,7 +1,6 @@
 use std::{
     ffi::OsString,
     io::{Read, Seek, SeekFrom, Write},
-    os::unix::ffi::OsStrExt,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -57,7 +56,7 @@ struct WebDavDirEntry {
 
 impl DavDirEntry for WebDavDirEntry {
     fn name(&self) -> Vec<u8> {
-        self.name.as_bytes().to_vec()
+        self.name.as_encoded_bytes().to_vec()
     }
 
     fn metadata(&self) -> FsFuture<Box<dyn DavMetaData>> {

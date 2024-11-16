@@ -130,7 +130,13 @@ impl<'v> Filesystem for FuseFileSystem<'v> {
         self.tree.forget(ino);
     }
 
-    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: Inode, reply: fuser::ReplyAttr) {
+    fn getattr(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        ino: Inode,
+        _fh: Option<u64>,
+        reply: fuser::ReplyAttr,
+    ) {
         if let Some(path) = self.tree.get_path(ino) {
             match self.fs.dir_entry(path) {
                 Ok(entry) => {

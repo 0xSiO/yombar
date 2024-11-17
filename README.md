@@ -9,12 +9,13 @@ Usage: yombar [OPTIONS] <COMMAND>
 
 Commands:
   create     Create a new empty vault
-  mount      Mount a vault as a virtual filesystem
+  mount      Mount a vault as a virtual filesystem using FUSE
+  serve      Serve a vault from a local WebDAV server
   translate  Translate between cleartext paths and encrypted paths
   help       Print this message or the help of the given subcommand(s)
 
 Options:
-  -v, --verbose...
+  -v, --verbose...  Enable verbose output (can be specified multiple times)
   -h, --help        Print help
   -V, --version     Print version
 ```

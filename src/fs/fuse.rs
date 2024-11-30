@@ -90,7 +90,7 @@ impl<'v> FuseFileSystem<'v> {
 
 // TODO: Explore flags sent to and returned from these methods
 // e.g. https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
-impl<'v> Filesystem for FuseFileSystem<'v> {
+impl Filesystem for FuseFileSystem<'_> {
     fn init(
         &mut self,
         _req: &fuser::Request<'_>,

@@ -121,7 +121,7 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl<'k> FileCryptor for Cryptor<'k> {
+impl FileCryptor for Cryptor<'_> {
     fn encrypted_header_len(&self) -> usize {
         ENCRYPTED_HEADER_LEN
     }

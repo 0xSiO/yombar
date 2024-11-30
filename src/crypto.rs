@@ -84,7 +84,7 @@ pub enum Cryptor<'k> {
     SivGcm(siv_gcm::Cryptor<'k>),
 }
 
-impl<'k> FileCryptor for Cryptor<'k> {
+impl FileCryptor for Cryptor<'_> {
     fn encrypted_header_len(&self) -> usize {
         match self {
             Cryptor::SivCtrMac(c) => c.encrypted_header_len(),

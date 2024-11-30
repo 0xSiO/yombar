@@ -212,7 +212,7 @@ impl<'k> EncryptedFile<'k> {
     }
 }
 
-impl<'k> Read for EncryptedFile<'k> {
+impl Read for EncryptedFile<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let guard = self.file.try_read()?;
 
@@ -255,14 +255,14 @@ impl<'k> Read for EncryptedFile<'k> {
     }
 }
 
-impl<'k> Seek for EncryptedFile<'k> {
+impl Seek for EncryptedFile<'_> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let guard = self.file.try_read()?;
         Self::seek_inner(self.cryptor, &guard, pos)
     }
 }
 
-impl<'k> Write for EncryptedFile<'k> {
+impl Write for EncryptedFile<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut guard = self.file.try_write()?;
 

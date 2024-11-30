@@ -70,7 +70,7 @@ struct WebDavFile<'k> {
     encrypted_file: EncryptedFile<'k>,
 }
 
-impl<'k> DavFile for WebDavFile<'k> {
+impl DavFile for WebDavFile<'_> {
     fn metadata(&mut self) -> FsFuture<Box<dyn DavMetaData>> {
         Box::pin(async move { Ok(Box::new(self.dir_entry.clone()) as _) })
     }
@@ -124,7 +124,11 @@ impl WebDavFileSystem {
 }
 
 impl DavFileSystem for WebDavFileSystem {
-    fn open<'a>(&'a self, path: &'a DavPath, options: OpenOptions) -> FsFuture<Box<dyn DavFile>> {
+    fn open<'a>(
+        &'a self,
+        path: &'a DavPath,
+        options: OpenOptions,
+    ) -> FsFuture<'a, Box<dyn DavFile>> {
         Box::pin(async move {
             // We'll support opening files in either read mode or read-write mode
             let mut open_options = std::fs::OpenOptions::new();
@@ -147,7 +151,7 @@ impl DavFileSystem for WebDavFileSystem {
         &'a self,
         path: &'a DavPath,
         _meta: ReadDirMeta,
-    ) -> FsFuture<FsStream<Box<dyn DavDirEntry>>> {
+    ) -> FsFuture<'a, FsStream<Box<dyn DavDirEntry>>> {
         Box::pin(async move {
             let dir_entries = self.fs.dir_entries(path.as_rel_ospath()).unwrap();
 
@@ -164,7 +168,7 @@ impl DavFileSystem for WebDavFileSystem {
         })
     }
 
-    fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<Box<dyn DavMetaData>> {
+    fn metadata<'a>(&'a self, path: &'a DavPath) -> FsFuture<'a, Box<dyn DavMetaData>> {
         Box::pin(async move {
             let dir_entry = self
                 .fs

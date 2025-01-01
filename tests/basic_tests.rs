@@ -29,7 +29,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     assert_eq!(
         vault.config().claims,
         VaultConfig {
-            jti: Uuid::from_str("3c34938f-8acb-4c41-9a48-7a8f3c42835a")?,
+            jti: Uuid::from_str("9228c6d3-7666-4198-b253-09891c2ad88c")?,
             format: 8,
             shortening_threshold: 220,
             cipher_combo: CipherCombo::SivCtrMac
@@ -40,34 +40,34 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     let cryptor = vault.cryptor();
 
     assert_eq!(
-        cryptor.decrypt_name("TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=", "")?,
+        cryptor.decrypt_name("IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=", "")?,
         "test_file.txt"
     );
     assert_eq!(
         cryptor.encrypt_name("test_file.txt", "")?,
-        "TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU="
+        "IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ="
     );
 
     assert_eq!(
         cryptor.decrypt_name(
-            "3ZnmWpMsMPllwZCto1Gb0R7JvkiWcuV1Kmk6aczQPQ==",
-            "68fdafca-2315-4840-87bc-19c48baf897f"
+            "kWQ67rcnZ-30y4C6oXIOuAjzGu0x_gc45QXQhNdjcA==",
+            "cfe5fb8b-129f-4c4b-9dbc-6508765cc077"
         )?,
         "test_file_2.txt"
     );
     assert_eq!(
-        cryptor.encrypt_name("test_file_2.txt", "68fdafca-2315-4840-87bc-19c48baf897f")?,
-        "3ZnmWpMsMPllwZCto1Gb0R7JvkiWcuV1Kmk6aczQPQ==",
+        cryptor.encrypt_name("test_file_2.txt", "cfe5fb8b-129f-4c4b-9dbc-6508765cc077")?,
+        "kWQ67rcnZ-30y4C6oXIOuAjzGu0x_gc45QXQhNdjcA=="
     );
 
     // Check file header encryption/decryption
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r"
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "0HtXhtsJDgIA4uDKS3PrXnVv4Nnn0ZbuJRWV35QQzGHM/8JjmEDXKgrYauFcj9WgFihKEYJLzzGae/jxCtQqloI3jvmhSc86LvBL7qKjV/O98nsPQoqBiBYrg9yKuhZOqC2xFK/TqohR/eSuIuRnmlKodNy9TTa8CDd5fVVh0zZDHfG63d4qoKeAtPXxyRQ7ConN+4iN4qToWz7xrOT++ptUUUQKzg4WN+DInMfPzTlU"
+        "/roktGKA1o3myAw7S6GObmqlIuE6nee5yrqjvaVPKqEXmB2uLsm1tXVGWd/KFgkARnb0JyBNvzX6qtqjpa4l5lrFN9hvE5aB5lf4pl8vATCLlLIrG3tA0Gi8kKgpPYNCxvba9umsQ+k7y7B8F+7+tBTH0rLCDcT4o/kFrgu23h61lWAB6wpQUz276xQnz9yVlls6M5IBPOBUJZMvKKPM40y1BDEfTNyCizLqSzLVtTcG"
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..88])?;
@@ -81,12 +81,12 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check root directory ID hashing
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/dirid.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/dirid.c9r",
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "A7raPuW/ve4JGJcznX5GcOtKBX956uBrQRjUrO2loItd8VekyvbDfJP2mnCm5mnFnMoP8jRZD+GzzAJvOAo1Y7mQTCKIVTt3r6S8zjBe9LQ4FSz6ASiu7w=="
+        "Ij45Bem+qnJOjGXF+rAeYfJJ1okxMJMLqvaRFHp81LoCz91eMBn0BWpSSbITWIMNIcMTWRdr/Pkc0yFnoPNIb+8aw7BfHFBuFx8X10MNkoi1iuiwdcUArA=="
     );
 
     let _ = cryptor.decrypt_header(&ciphertext[..88])?;
@@ -94,34 +94,34 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     assert_eq!(
         cryptor.hash_dir_id("")?,
-        PathBuf::from("B3").join("EO5WWODTDD254SS2TQWVAQKJAWPBKK")
+        PathBuf::from("GI").join("YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A")
     );
 
     // Check subdirectory ID hashing
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/QQ/I7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE/dirid.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/7T/X2VJCKD5CWG6UKR4UUHF5VIYWV7BGL/dirid.c9r",
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "kevHWULbQN6e9NYLNLM9psqkEfxibHIsVlK7DMNgGzo+d31XncWBv1jqkVtIXEVzsVjFdcdE3QhPVdOAzRu7hJslfEMb2QAWTZsyr/cn6dQZkhLHyv+zO3qE7QPUefj9SNEJ/PqIS05Nb5dnqm963iPkAS823kPlhxkRn/VwvpS3Mb2K23mTG9/EECdKfEcdhhTgkfeuYxr6QBIniA52OQcoyiJuDa2DBDa6lw=="
+        "JLRFeWkacyca4rOAfGns4npc64+wyRFukLfP37pWivTaAKOqDDsukYRfYTihOTSp3BVVAY5yJ7Syuhd+/riLrIEAgpD+oS/SDhQd16XZnXDX+H0pxji+Td5dJew7SM6Hxg5wXruO7COKAmS/qMpS2hterw/5edsqVlsLsnHc0rYGgmBk3GJp00J2YDDg+OSDyvYAQeMRX6zu3p3AJGOnHS5voKmnVhJ7nDLV8g=="
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..88])?;
     assert_eq!(
         cryptor.decrypt_chunk(&ciphertext[88..], &header, 0)?,
-        b"68fdafca-2315-4840-87bc-19c48baf897f"
+        b"cfe5fb8b-129f-4c4b-9dbc-6508765cc077"
     );
 
     assert_eq!(
-        cryptor.hash_dir_id("68fdafca-2315-4840-87bc-19c48baf897f")?,
-        PathBuf::from("QQ").join("I7Q3TUGAZFNCXWWEXUSOJS7PQ4K4HE")
+        cryptor.hash_dir_id("cfe5fb8b-129f-4c4b-9dbc-6508765cc077")?,
+        PathBuf::from("7T").join("X2VJCKD5CWG6UKR4UUHF5VIYWV7BGL")
     );
 
     // Check reading smaller files
     let mut file = EncryptedFile::open(
         cryptor,
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r",
         File::options().read(true).clone()
     )?;
 
@@ -132,7 +132,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     // Check reading larger files
     let mut file = EncryptedFile::open(
         cryptor,
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/lTrI2Jfu-YkLpHmfu_OZPge73NerWUK5wjFewa8E.c9r",
         File::options().read(true).clone()
     )?;
 
@@ -142,7 +142,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check seeking & writing smaller files
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r",
     )?;
 
     let _ = fs::remove_file("tests/test_small_siv_ctrmac.c9r");
@@ -169,7 +169,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check writing larger files
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/elqiMLEIVhXP94ydJeId4vavM_9rPv380wdMYzwg.c9r",
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/lTrI2Jfu-YkLpHmfu_OZPge73NerWUK5wjFewa8E.c9r",
     )?;
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 
@@ -203,7 +203,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     assert_eq!(
         vault.config().claims,
         VaultConfig {
-            jti: Uuid::from_str("46cd26de-d575-4563-ad30-432123f85f36")?,
+            jti: Uuid::from_str("8e8d17a2-7b14-4439-a72f-5813e6843559")?,
             format: 8,
             shortening_threshold: 220,
             cipher_combo: CipherCombo::SivGcm

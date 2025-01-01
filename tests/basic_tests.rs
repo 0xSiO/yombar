@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{Read, Seek, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::PathBuf,
     str::FromStr,
 };
@@ -140,13 +140,13 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     file.read_to_end(&mut decrypted)?;
     assert_eq!(decrypted, fs::read("tests/fixtures/test_image.jpg")?);
 
-    // Check writing smaller files
+    // Check seeking & writing smaller files
     let ciphertext = std::fs::read(
         "tests/fixtures/vault_v8_siv_ctrmac/d/B3/EO5WWODTDD254SS2TQWVAQKJAWPBKK/TKDIJ1vsa0Tp5ZCcUudycUuYTcz17tdgI489pGU=.c9r",
     )?;
 
-    let _ = fs::remove_file("tests/test_small_siv_ctrmac.txt");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_ctrmac.txt")?;
+    let _ = fs::remove_file("tests/test_small_siv_ctrmac.c9r");
+    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_ctrmac.c9r")?;
     file.write_all(b"this is a test file with some text in it\n")?;
     file.flush()?;
 
@@ -157,7 +157,15 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     assert_eq!(file.metadata()?.len() as usize, ciphertext.len());
     assert_eq!(decrypted, "this is a test file with some text in it\n");
 
-    fs::remove_file("tests/test_small_siv_ctrmac.txt")?;
+    file.seek(SeekFrom::Start(10))?;
+    file.write_all(b"text")?;
+    decrypted.clear();
+    file.rewind()?;
+    file.read_to_string(&mut decrypted)?;
+
+    assert_eq!(decrypted, "this is a text file with some text in it\n");
+
+    fs::remove_file("tests/test_small_siv_ctrmac.c9r")?;
 
     // Check writing larger files
     let ciphertext = std::fs::read(
@@ -165,8 +173,8 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     )?;
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 
-    let _ = fs::remove_file("tests/test_larger_siv_ctrmac.jpg");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_ctrmac.jpg")?;
+    let _ = fs::remove_file("tests/test_larger_siv_ctrmac.c9r");
+    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_ctrmac.c9r")?;
     file.write_all(&image_data)?;
     file.flush()?;
 
@@ -177,7 +185,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     assert_eq!(file.metadata()?.len() as usize, ciphertext.len());
     assert_eq!(decrypted, image_data);
 
-    fs::remove_file("tests/test_larger_siv_ctrmac.jpg")?;
+    fs::remove_file("tests/test_larger_siv_ctrmac.c9r")?;
 
     Ok(())
 }
@@ -307,13 +315,13 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     file.read_to_end(&mut decrypted)?;
     assert_eq!(decrypted, fs::read("tests/fixtures/test_image.jpg")?);
 
-    // Check writing smaller files
+    // Check seeking & writing smaller files
     let ciphertext = std::fs::read(
         "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
     )?;
 
-    let _ = fs::remove_file("tests/test_small_siv_gcm.txt");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_gcm.txt")?;
+    let _ = fs::remove_file("tests/test_small_siv_gcm.c9r");
+    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_gcm.c9r")?;
     file.write_all(b"this is a test file with some text in it\n")?;
     file.flush()?;
 
@@ -324,7 +332,15 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     assert_eq!(file.metadata()?.len() as usize, ciphertext.len());
     assert_eq!(decrypted, "this is a test file with some text in it\n");
 
-    fs::remove_file("tests/test_small_siv_gcm.txt")?;
+    file.seek(SeekFrom::Start(10))?;
+    file.write_all(b"text")?;
+    decrypted.clear();
+    file.rewind()?;
+    file.read_to_string(&mut decrypted)?;
+
+    assert_eq!(decrypted, "this is a text file with some text in it\n");
+
+    fs::remove_file("tests/test_small_siv_gcm.c9r")?;
 
     // Check writing larger files
     let ciphertext = std::fs::read(
@@ -332,8 +348,8 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     )?;
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 
-    let _ = fs::remove_file("tests/test_larger_siv_gcm.jpg");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_gcm.jpg")?;
+    let _ = fs::remove_file("tests/test_larger_siv_gcm.c9r");
+    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_gcm.c9r")?;
     file.write_all(&image_data)?;
     file.flush()?;
 
@@ -344,7 +360,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     assert_eq!(file.metadata()?.len() as usize, ciphertext.len());
     assert_eq!(decrypted, image_data);
 
-    fs::remove_file("tests/test_larger_siv_gcm.jpg")?;
+    fs::remove_file("tests/test_larger_siv_gcm.c9r")?;
 
     Ok(())
 }

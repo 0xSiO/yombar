@@ -214,34 +214,34 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     let cryptor = vault.cryptor();
 
     assert_eq!(
-        cryptor.decrypt_name("AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=", "")?,
+        cryptor.decrypt_name("Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=", "")?,
         "test_file.txt"
     );
     assert_eq!(
         cryptor.encrypt_name("test_file.txt", "")?,
-        "AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw="
+        "Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY="
     );
 
     assert_eq!(
         cryptor.decrypt_name(
-            "j2O1bILonFELjBCQTaqZEBgfUh1_uHvXjOdMdc2ZEg==",
-            "1a3534ba-34fb-4ba6-ad67-1e37627d40be"
+            "EbRMA8Bi4uhKIxjTyXs5e53PHMMckHX0_HCJiiYTgg==",
+            "16b1ae69-5913-4c7e-b68e-aa827440e263"
         )?,
         "test_file_2.txt"
     );
     assert_eq!(
-        cryptor.encrypt_name("test_file_2.txt", "1a3534ba-34fb-4ba6-ad67-1e37627d40be")?,
-        "j2O1bILonFELjBCQTaqZEBgfUh1_uHvXjOdMdc2ZEg=="
+        cryptor.encrypt_name("test_file_2.txt", "16b1ae69-5913-4c7e-b68e-aa827440e263")?,
+        "EbRMA8Bi4uhKIxjTyXs5e53PHMMckHX0_HCJiiYTgg==",
     );
 
     // Check file header encryption/decryption
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=.c9r",
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "EOc16Sc/NMUcA9N8K6aYhNWdXdX34sZbTUw0WWVXjtxDAHiuLoTtrre0PNzb1SwvLGz2Ow6/7lBDb+inNxZr7sAc5BwkJHmHJaEjLbOU5i+tCSI7inkX9YmFv6Zm9ZjeDy8lK1360cCTHQ9d4IQ2dhX6Qa5ZMeKSC31r5Y3Eg+rY0U8eIjzby8Q="
+        "jf1U5SkG/AOYYESWb6oZgg0V5AEG4bpSlPgiSfRP5hJLAuvoJbFHyynkH2/ianaOpm8q329kpq8bEwxUlRt9DQUX7ZON9JlEz1jLRgcWyJnR1GVcsRmdaLICGAGHCxsU4Uq8d31AQr3bd7oUJnHdvBevw20EQKa1ERzflyflfqJfsufGRCRNOqg="
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..68])?;
@@ -255,12 +255,12 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     // Check root directory ID hashing
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/dirid.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/dirid.c9r",
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "ftvD3GxyBnhbFU6kxs5CEHUh0LMhCXHVfQJLZrVCbq9cZ8ptPl2KD9oEGvGlcaI/XVhPT17C4y1P9Y6qhDTRZFGF5xw="
+        "RvnxmEumxEo980tpHuTDXgvcpDjB3kFuV7Z9PdCy8bKBd/e6PdHCYcLSCY/TimCcgAI3gncdlJgxb4OYpzWt//JmGeI="
     );
 
     let _ = cryptor.decrypt_header(&ciphertext[..68])?;
@@ -268,35 +268,35 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     assert_eq!(
         cryptor.hash_dir_id("")?,
-        PathBuf::from("RC").join("WG5EI3VR4DOIGAFUPFXLALP5SBGCL5")
+        PathBuf::from("QD").join("W5WPJ7TSDTMH2G4363MJUELZ7KZMHK")
     );
 
     // Check subdirectory ID hashing
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/RT/C3KT7DD5C3X6QE32X4IL6PM6WHHNB5/dirid.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/UW/RBQWYYXJZZTYB4UCJAMR5D6Z55K2ZF/dirid.c9r",
     )?;
 
     assert_eq!(
         Base64::encode_string(&ciphertext),
-        "u53iAARXqaZVGLJMguDq2KQZ2A5eu/jxzjsqapLwVGEe2FeazwpWRptqUHEFzKVwbFh16L7Y++pR1s+WunbJU0uOKvVS9lDTEV9B9MsjSOIijAsUg0tgcoOplb5BL5Og0G10AgbWCall/smk1fgsWaIF0y2g8ScFhlmMJGA7HhXqolOf"
+        "GZ8HdDcCBuSy9B9D+4nfIoxYCrsnLgOKhHMt4cr62wF2oMy5i1/nbCcsoseihgOKOU0JDkNb4zSlXgNIezALBqHjjM76E4PNktvL2VacgqTX/cp3UsT4HMWPygy9t+PDds2ZSG1t++rhpfINmOuEmC4hZIr3V9z5gsqXF7rqQ7XsMGQW"
     );
 
     let header = cryptor.decrypt_header(&ciphertext[..68])?;
 
     assert_eq!(
         cryptor.decrypt_chunk(&ciphertext[68..], &header, 0)?,
-        b"1a3534ba-34fb-4ba6-ad67-1e37627d40be"
+        b"16b1ae69-5913-4c7e-b68e-aa827440e263"
     );
 
     assert_eq!(
-        cryptor.hash_dir_id("1a3534ba-34fb-4ba6-ad67-1e37627d40be")?,
-        PathBuf::from("RT").join("C3KT7DD5C3X6QE32X4IL6PM6WHHNB5")
+        cryptor.hash_dir_id("16b1ae69-5913-4c7e-b68e-aa827440e263")?,
+        PathBuf::from("UW").join("RBQWYYXJZZTYB4UCJAMR5D6Z55K2ZF")
     );
 
     // Check reading smaller files
     let mut file = EncryptedFile::open(
         cryptor,
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=.c9r",
         File::options().read(true).clone()
     )?;
 
@@ -307,7 +307,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     // Check reading larger files
     let mut file = EncryptedFile::open(
         cryptor,
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/WQ6sflYGPWPHJubj3F4ZMYwhKraEQUCV42gL11XA.c9r",
         File::options().read(true).clone()
     )?;
 
@@ -317,7 +317,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     // Check seeking & writing smaller files
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/AlBBrYyQQqFiMXocarsNhcWd2oQ0yyRu86LZdZw=.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=.c9r",
     )?;
 
     let _ = fs::remove_file("tests/test_small_siv_gcm.c9r");
@@ -344,7 +344,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     // Check writing larger files
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_gcm/d/RC/WG5EI3VR4DOIGAFUPFXLALP5SBGCL5/LNyfONa3J2M1pirw-S-YBasDwUyV7RyhSwz7oMlP.c9r",
+        "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/WQ6sflYGPWPHJubj3F4ZMYwhKraEQUCV42gL11XA.c9r",
     )?;
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 

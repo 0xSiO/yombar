@@ -198,12 +198,11 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
     fn wrap_and_unwrap_test() {
         let key_bytes = [[10; SUBKEY_LEN], [20; SUBKEY_LEN]].concat();
         let key = MasterKey(key_bytes.try_into().unwrap());
         let password = String::from("this is a test password");
-        let params = Params::new(15, 8, 1, SUBKEY_LEN).unwrap();
+        let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
         let salt_string = SaltString::encode_b64(b"test salt").unwrap();
         let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_key = key.wrap(&kek, params, salt_string.clone(), 8).unwrap();
@@ -214,11 +213,11 @@ mod tests {
         assert_eq!(wrapped_key.scrypt_params.p(), params.p());
         assert_eq!(
             Base64::encode_string(wrapped_key.enc_key()),
-            "1bCocbTJN6z7IgHSW0ooxg5sgiN11sILWVnEMxcE8ZN6DHPQplCDhA=="
+            "hVcTLMybIXICR26f5zpegiH/OpXnNv4lvytd6tATj87Di4lPhD5t0Q=="
         );
         assert_eq!(
             Base64::encode_string(wrapped_key.mac_key()),
-            "Cn4g11WzO5BG3bQ6aZ+JLrYpLNY49FfAec088PfNCcAB5weaAdrJ7g=="
+            "LiBoVDJthshFhm1Q+T3de2Ynpfb5Yx63KrRyjqSGBNp3gyFznhjnNQ=="
         );
         assert_eq!(
             Base64::encode_string(wrapped_key.version_mac()),

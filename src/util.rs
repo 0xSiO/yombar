@@ -74,33 +74,31 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
     fn password_hash_test() {
-        let password = String::from("pleaseletmein");
-        let salt_string = SaltString::encode_b64(b"SodiumChloride").unwrap();
-        let params = Params::new(14, 8, 1, 64).unwrap();
+        let password = String::from("the_password");
+        let salt_string = SaltString::encode_b64(b"salty").unwrap();
+        let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
         let password_hash = Scrypt
             .hash_password_customized(password.as_bytes(), None, None, params, &salt_string)
             .unwrap();
 
         assert_eq!(
             Base64::encode_string(password_hash.hash.unwrap().as_bytes()),
-            "cCO9yzr9c0hGHAbNgf046/2o+7qQT44+qbVD9lRdofLVQylVYT8Pz2LUlwUkKpr55h6F3A1lHkDfzwF7RVdYhw=="
+            "VXfqskgJw4XfN0pWQYfD4UlSJsKJ/MqTZNyIh9Vu3v8="
         );
     }
 
     #[test]
-    #[ignore]
     fn kek_derivation_test() {
         let password = String::from("this is a test password");
         let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
-        let params = Params::new(15, 8, 1, SUBKEY_LEN).unwrap();
+        let params = Params::new(6, 8, 1, SUBKEY_LEN).unwrap();
         let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();
         let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
         assert_eq!(
             Base64::encode_string(&wrapped_data),
-            "Rf3TWtT0Rz9WDIMD3+26pA=="
+            "3km5Iw076jsx8sdzMv+QmA=="
         );
     }
 

@@ -977,6 +977,113 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        fn set_permissions_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("set_permissions_test_siv_ctrmac");
+
+            // files
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o777))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o777)
+            );
+            fs.unlink("", name)?;
+
+            fs.mknod(long_dir, name, Permissions::from_mode(0o600))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o600)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o700),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o700)
+            );
+            fs.unlink(long_dir, name)?;
+
+            // directories
+            fs.mkdir("", name, Permissions::from_mode(0o744))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o744)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o755)
+            );
+            fs.rmdir("", name)?;
+
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o755)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o777),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name),)?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o777)
+            );
+            fs.rmdir(long_dir, name)?;
+
+            // symlinks
+            fs.symlink("", name, "test_file.txt")?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                // Don't worry about S_IFLNK - FUSE will automatically set the entry type for us
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o755)
+            );
+            fs.unlink("", name)?;
+
+            fs.symlink(long_dir, name, "unknown")?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o755),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o755)
+            );
+            fs.unlink(long_dir, name)?;
+
+            Ok(())
+        }
     }
 
     mod siv_gcm {
@@ -1334,6 +1441,113 @@ mod tests {
             );
             fs.unlink(long_dir, name)?;
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
+
+            Ok(())
+        }
+
+        #[test]
+        fn set_permissions_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("set_permissions_test_siv_gcm");
+
+            // files
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o777))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o777)
+            );
+            fs.unlink("", name)?;
+
+            fs.mknod(long_dir, name, Permissions::from_mode(0o600))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o600)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o700),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o700)
+            );
+            fs.unlink(long_dir, name)?;
+
+            // directories
+            fs.mkdir("", name, Permissions::from_mode(0o744))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o744)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o755)
+            );
+            fs.rmdir("", name)?;
+
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o755)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o777),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name),)?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFDIR | 0o777)
+            );
+            fs.rmdir(long_dir, name)?;
+
+            // symlinks
+            fs.symlink("", name, "test_file.txt")?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                // Don't worry about S_IFLNK - FUSE will automatically set the entry type for us
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(name)?.metadata.permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o755)
+            );
+            fs.unlink("", name)?;
+
+            fs.symlink(long_dir, name, "unknown")?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o644)
+            );
+            fs.set_permissions(
+                PathBuf::from(long_dir).join(name),
+                Permissions::from_mode(0o755),
+            )?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .permissions(),
+                Permissions::from_mode(libc::S_IFREG | 0o755)
+            );
+            fs.unlink(long_dir, name)?;
 
             Ok(())
         }

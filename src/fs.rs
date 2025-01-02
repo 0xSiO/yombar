@@ -914,6 +914,7 @@ mod tests {
             fs.mknod("", name, Permissions::from_mode(0o644))?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::File);
             fs.unlink("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.mknod(long_dir, name, Permissions::from_mode(0o646))?;
@@ -922,6 +923,7 @@ mod tests {
                 FileKind::File
             );
             fs.unlink(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }
@@ -937,6 +939,7 @@ mod tests {
             fs.mkdir("", name, Permissions::from_mode(0o744))?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::Directory);
             fs.rmdir("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
@@ -945,6 +948,7 @@ mod tests {
                 FileKind::Directory
             );
             fs.rmdir(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }
@@ -960,6 +964,7 @@ mod tests {
             fs.symlink("", name, "test_file.txt")?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::Symlink);
             fs.unlink("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.symlink(long_dir, name, "unknown")?;
@@ -968,6 +973,7 @@ mod tests {
                 FileKind::Symlink
             );
             fs.unlink(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }
@@ -1268,6 +1274,7 @@ mod tests {
             fs.mknod("", name, Permissions::from_mode(0o644))?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::File);
             fs.unlink("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.mknod(long_dir, name, Permissions::from_mode(0o646))?;
@@ -1276,6 +1283,7 @@ mod tests {
                 FileKind::File
             );
             fs.unlink(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }
@@ -1291,6 +1299,7 @@ mod tests {
             fs.mkdir("", name, Permissions::from_mode(0o744))?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::Directory);
             fs.rmdir("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
@@ -1299,6 +1308,7 @@ mod tests {
                 FileKind::Directory
             );
             fs.rmdir(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }
@@ -1314,6 +1324,7 @@ mod tests {
             fs.symlink("", name, "test_file.txt")?;
             assert_eq!(fs.dir_entry(name)?.kind, FileKind::Symlink);
             fs.unlink("", name)?;
+            assert!(fs.dir_entry(name).is_err());
 
             assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
             fs.symlink(long_dir, name, "unknown")?;
@@ -1322,6 +1333,7 @@ mod tests {
                 FileKind::Symlink
             );
             fs.unlink(long_dir, name)?;
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
 
             Ok(())
         }

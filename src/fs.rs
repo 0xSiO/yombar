@@ -854,6 +854,54 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        fn rename_link_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let name_1 = OsStr::new("rename_link_test_siv_ctrmac_1");
+            let name_2 = OsStr::new("rename_link_test_siv_ctrmac_2");
+
+            fs.symlink("", name_1, "test_file.txt")?;
+
+            // short -> short
+            rename_test_helper(&fs, "", name_1, "", name_2, FileKind::Symlink)?;
+
+            // short -> long
+            rename_test_helper(
+                &fs,
+                "",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                FileKind::Symlink
+            )?;
+
+            // long -> long
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                FileKind::Symlink
+            )?;
+
+            // long -> short
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                "",
+                name_2,
+                FileKind::Symlink
+            )?;
+
+            fs.unlink("", name_2)?;
+
+            Ok(())
+        }
     }
 
     mod siv_gcm {
@@ -1088,6 +1136,54 @@ mod tests {
             )?;
 
             fs.rmdir("", name_2)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn rename_link_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let name_1 = OsStr::new("rename_link_test_siv_gcm_1");
+            let name_2 = OsStr::new("rename_link_test_siv_gcm_2");
+
+            fs.symlink("", name_1, "test_file.txt")?;
+
+            // short -> short
+            rename_test_helper(&fs, "", name_1, "", name_2, FileKind::Symlink)?;
+
+            // short -> long
+            rename_test_helper(
+                &fs,
+                "",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                FileKind::Symlink
+            )?;
+
+            // long -> long
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                FileKind::Symlink
+            )?;
+
+            // long -> short
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                "",
+                name_2,
+                FileKind::Symlink
+            )?;
+
+            fs.unlink("", name_2)?;
 
             Ok(())
         }

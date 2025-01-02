@@ -744,7 +744,8 @@ mod tests {
                     "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
                     options.clone()
                 )
-                .is_ok());
+                .is_ok()
+            );
             assert!(fs.open_file("invalid.unknown", options).is_err());
 
             Ok(())

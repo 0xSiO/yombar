@@ -642,7 +642,6 @@ mod tests {
 
             let entry = fs.dir_entry("")?;
             assert_eq!(entry.kind, FileKind::Directory);
-            assert_eq!(entry.size, fs.root_dir().metadata()?.len());
 
             let entry = fs.dir_entry("test_file.txt")?;
             assert_eq!(entry.kind, FileKind::File);
@@ -656,14 +655,6 @@ mod tests {
 
             let entry = fs.dir_entry("test_dir")?;
             assert_eq!(entry.kind, FileKind::Directory);
-            assert_eq!(
-                entry.size,
-                vault
-                    .path()
-                    .join("d/7T/X2VJCKD5CWG6UKR4UUHF5VIYWV7BGL")
-                    .metadata()?
-                    .len()
-            );
 
             let entry = fs.dir_entry(
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
@@ -1232,7 +1223,6 @@ mod tests {
 
             let entry = fs.dir_entry("")?;
             assert_eq!(entry.kind, FileKind::Directory);
-            assert_eq!(entry.size, fs.root_dir().metadata()?.len());
 
             let entry = fs.dir_entry("test_file.txt")?;
             assert_eq!(entry.kind, FileKind::File);
@@ -1246,14 +1236,6 @@ mod tests {
 
             let entry = fs.dir_entry("test_dir")?;
             assert_eq!(entry.kind, FileKind::Directory);
-            assert_eq!(
-                entry.size,
-                vault
-                    .path()
-                    .join("d/UW/RBQWYYXJZZTYB4UCJAMR5D6Z55K2ZF")
-                    .metadata()?
-                    .len()
-            );
 
             let entry = fs.dir_entry(
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",

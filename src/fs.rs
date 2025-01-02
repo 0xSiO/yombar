@@ -648,8 +648,8 @@ mod tests {
             assert_eq!(entry.size, 41);
 
             let entry = fs.dir_entry(
-            "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
-        )?;
+                "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+            )?;
             assert_eq!(entry.kind, FileKind::File);
             assert_eq!(entry.size, 29);
 
@@ -665,8 +665,8 @@ mod tests {
             );
 
             let entry = fs.dir_entry(
-            "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
-        )?;
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+            )?;
             assert_eq!(entry.kind, FileKind::Directory);
             assert_eq!(
                 entry.size,
@@ -682,8 +682,8 @@ mod tests {
             assert_eq!(entry.size, 24);
 
             let entry = fs.dir_entry(
-            "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
-        )?;
+                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+            )?;
             assert_eq!(entry.kind, FileKind::Symlink);
             assert_eq!(entry.size, 148);
 
@@ -725,13 +725,13 @@ mod tests {
             );
 
             assert_eq!(
-            fs.link_target(
-                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
-            )?,
-            PathBuf::from(
-                "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
-            )
-        );
+                fs.link_target(
+                    "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
+                )?,
+                PathBuf::from(
+                    "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
+                )
+            );
 
             assert!(fs.link_target("test_file.txt").is_err());
             assert!(fs.link_target("invalid.unknown").is_err());
@@ -752,8 +752,7 @@ mod tests {
                     "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
                     options.clone()
                 )
-                .is_ok()
-            );
+                .is_ok());
             assert!(fs.open_file("invalid.unknown", options).is_err());
 
             Ok(())
@@ -1115,8 +1114,8 @@ mod tests {
             assert_eq!(entry.size, 41);
 
             let entry = fs.dir_entry(
-            "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
-        )?;
+                "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+            )?;
             assert_eq!(entry.kind, FileKind::File);
             assert_eq!(entry.size, 29);
 
@@ -1132,8 +1131,8 @@ mod tests {
             );
 
             let entry = fs.dir_entry(
-            "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
-        )?;
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+            )?;
             assert_eq!(entry.kind, FileKind::Directory);
             assert_eq!(
                 entry.size,
@@ -1149,8 +1148,8 @@ mod tests {
             assert_eq!(entry.size, 24);
 
             let entry = fs.dir_entry(
-            "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
-        )?;
+                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+            )?;
             assert_eq!(entry.kind, FileKind::Symlink);
             assert_eq!(entry.size, 148);
 
@@ -1192,13 +1191,13 @@ mod tests {
             );
 
             assert_eq!(
-            fs.link_target(
-                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
-            )?,
-            PathBuf::from(
-                "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
-            )
-        );
+                fs.link_target(
+                    "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
+                )?,
+                PathBuf::from(
+                    "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
+                )
+            );
 
             assert!(fs.link_target("test_file.txt").is_err());
             assert!(fs.link_target("invalid.unknown").is_err());

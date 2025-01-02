@@ -580,6 +580,7 @@ impl<'v> EncryptedFileSystem<'v> {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
+    use std::time::UNIX_EPOCH;
 
     use super::*;
 
@@ -1083,6 +1084,130 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        fn set_times_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("set_times_test_siv_ctrmac");
+            let epoch_times = FileTimes::new()
+                .set_accessed(UNIX_EPOCH)
+                .set_modified(UNIX_EPOCH);
+
+            // files
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.unlink("", name)?;
+
+            fs.mknod(long_dir, name, Permissions::from_mode(0o644))?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.unlink(long_dir, name)?;
+
+            // directories
+            fs.mkdir("", name, Permissions::from_mode(0o755))?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.rmdir("", name)?;
+
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.rmdir(long_dir, name)?;
+
+            // symlinks
+            fs.symlink("", name, "test_file.txt")?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.unlink("", name)?;
+
+            fs.symlink(long_dir, name, "unknown")?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.unlink(long_dir, name)?;
+
+            Ok(())
+        }
     }
 
     mod siv_gcm {
@@ -1545,6 +1670,130 @@ mod tests {
                     .metadata
                     .permissions(),
                 Permissions::from_mode(libc::S_IFREG | 0o755)
+            );
+            fs.unlink(long_dir, name)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn set_times_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("set_times_test_siv_gcm");
+            let epoch_times = FileTimes::new()
+                .set_accessed(UNIX_EPOCH)
+                .set_modified(UNIX_EPOCH);
+
+            // files
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.unlink("", name)?;
+
+            fs.mknod(long_dir, name, Permissions::from_mode(0o644))?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.unlink(long_dir, name)?;
+
+            // directories
+            fs.mkdir("", name, Permissions::from_mode(0o755))?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.rmdir("", name)?;
+
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.rmdir(long_dir, name)?;
+
+            // symlinks
+            fs.symlink("", name, "test_file.txt")?;
+            assert_ne!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_ne!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.set_times(name, epoch_times)?;
+            assert_eq!(fs.dir_entry(name)?.metadata.accessed()?, UNIX_EPOCH);
+            assert_eq!(fs.dir_entry(name)?.metadata.modified()?, UNIX_EPOCH);
+            fs.unlink("", name)?;
+
+            fs.symlink(long_dir, name, "unknown")?;
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_ne!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
+            );
+            fs.set_times(PathBuf::from(long_dir).join(name), epoch_times)?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .accessed()?,
+                UNIX_EPOCH
+            );
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?
+                    .metadata
+                    .modified()?,
+                UNIX_EPOCH
             );
             fs.unlink(long_dir, name)?;
 

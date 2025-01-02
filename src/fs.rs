@@ -925,6 +925,29 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        fn mkdir_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("mkdir_test_siv_ctrmac");
+
+            assert!(fs.dir_entry(name).is_err());
+            fs.mkdir("", name, Permissions::from_mode(0o744))?;
+            assert_eq!(fs.dir_entry(name)?.kind, FileKind::Directory);
+            fs.rmdir("", name)?;
+
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?.kind,
+                FileKind::Directory
+            );
+            fs.rmdir(long_dir, name)?;
+
+            Ok(())
+        }
     }
 
     mod siv_gcm {
@@ -1230,6 +1253,29 @@ mod tests {
                 FileKind::File
             );
             fs.unlink(long_dir, name)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn mkdir_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("mkdir_test_siv_gcm");
+
+            assert!(fs.dir_entry(name).is_err());
+            fs.mkdir("", name, Permissions::from_mode(0o744))?;
+            assert_eq!(fs.dir_entry(name)?.kind, FileKind::Directory);
+            fs.rmdir("", name)?;
+
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
+            fs.mkdir(long_dir, name, Permissions::from_mode(0o755))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?.kind,
+                FileKind::Directory
+            );
+            fs.rmdir(long_dir, name)?;
 
             Ok(())
         }

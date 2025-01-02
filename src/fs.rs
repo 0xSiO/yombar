@@ -576,3 +576,301 @@ impl<'v> EncryptedFileSystem<'v> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get_vault_siv_ctrmac() -> Result<Vault> {
+        Vault::open(
+            "tests/fixtures/vault_v8_siv_ctrmac",
+            String::from("password"),
+        )
+    }
+
+    fn get_vault_siv_gcm() -> Result<Vault> {
+        Vault::open("tests/fixtures/vault_v8_siv_gcm", String::from("password"))
+    }
+
+    mod siv_ctrmac {
+        use super::*;
+
+        #[test]
+        fn root_dir_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            assert_eq!(
+                fs.root_dir(),
+                vault.path().join("d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A")
+            );
+
+            Ok(())
+        }
+
+        #[test]
+        fn dir_entry_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let entry = fs.dir_entry("")?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(entry.size, fs.root_dir().metadata()?.len());
+
+            let entry = fs.dir_entry("test_file.txt")?;
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 41);
+
+            let entry = fs.dir_entry(
+            "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+        )?;
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 29);
+
+            let entry = fs.dir_entry("test_dir")?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(
+                entry.size,
+                vault
+                    .path()
+                    .join("d/7T/X2VJCKD5CWG6UKR4UUHF5VIYWV7BGL")
+                    .metadata()?
+                    .len()
+            );
+
+            let entry = fs.dir_entry(
+            "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+        )?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(
+                entry.size,
+                vault
+                    .path()
+                    .join("d/55/YKAU6VJ4B7QTWNPM4GHQ66HJXT4OJA")
+                    .metadata()?
+                    .len()
+            );
+
+            let entry = fs.dir_entry("test_link")?;
+            assert_eq!(entry.kind, FileKind::Symlink);
+            assert_eq!(entry.size, 24);
+
+            let entry = fs.dir_entry(
+            "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+        )?;
+            assert_eq!(entry.kind, FileKind::Symlink);
+            assert_eq!(entry.size, 148);
+
+            assert!(fs.dir_entry("invalid.unknown").is_err());
+
+            Ok(())
+        }
+
+        #[test]
+        fn dir_entries_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let entries = fs.dir_entries("")?;
+            assert_eq!(entries.len(), 4);
+            let entry = entries.get(&PathBuf::from("test_file.txt")).unwrap();
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 41);
+
+            let entries = fs.dir_entries("test_dir")?;
+            assert_eq!(entries.len(), 4);
+            let entry = entries
+                .get(&PathBuf::from("test_dir/test_file_2.txt"))
+                .unwrap();
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 47);
+
+            Ok(())
+        }
+
+        #[test]
+        fn link_target_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            assert_eq!(
+                fs.link_target("test_link")?,
+                PathBuf::from("test_dir/test_file_2.txt")
+            );
+
+            assert_eq!(
+            fs.link_target(
+                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
+            )?,
+            PathBuf::from(
+                "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
+            )
+        );
+
+            assert!(fs.link_target("test_file.txt").is_err());
+            assert!(fs.link_target("invalid.unknown").is_err());
+
+            Ok(())
+        }
+
+        #[test]
+        fn open_file_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let mut options = OpenOptions::new();
+            options.read(true).write(true);
+            assert!(fs.open_file("test_file.txt", options.clone()).is_ok());
+            assert!(fs
+                .open_file(
+                    "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+                    options.clone()
+                )
+                .is_ok()
+            );
+            assert!(fs.open_file("invalid.unknown", options).is_err());
+
+            Ok(())
+        }
+    }
+
+    mod siv_gcm {
+        use super::*;
+
+        #[test]
+        fn root_dir_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            assert_eq!(
+                fs.root_dir(),
+                vault.path().join("d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK")
+            );
+
+            Ok(())
+        }
+
+        #[test]
+        fn dir_entry_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let entry = fs.dir_entry("")?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(entry.size, fs.root_dir().metadata()?.len());
+
+            let entry = fs.dir_entry("test_file.txt")?;
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 41);
+
+            let entry = fs.dir_entry(
+            "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+        )?;
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 29);
+
+            let entry = fs.dir_entry("test_dir")?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(
+                entry.size,
+                vault
+                    .path()
+                    .join("d/UW/RBQWYYXJZZTYB4UCJAMR5D6Z55K2ZF")
+                    .metadata()?
+                    .len()
+            );
+
+            let entry = fs.dir_entry(
+            "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+        )?;
+            assert_eq!(entry.kind, FileKind::Directory);
+            assert_eq!(
+                entry.size,
+                vault
+                    .path()
+                    .join("d/UI/6ZF2IIZX3LXLARPP2U64V65SL3B4VM")
+                    .metadata()?
+                    .len()
+            );
+
+            let entry = fs.dir_entry("test_link")?;
+            assert_eq!(entry.kind, FileKind::Symlink);
+            assert_eq!(entry.size, 24);
+
+            let entry = fs.dir_entry(
+            "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+        )?;
+            assert_eq!(entry.kind, FileKind::Symlink);
+            assert_eq!(entry.size, 148);
+
+            assert!(fs.dir_entry("invalid.unknown").is_err());
+
+            Ok(())
+        }
+
+        #[test]
+        fn dir_entries_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let entries = fs.dir_entries("")?;
+            assert_eq!(entries.len(), 4);
+            let entry = entries.get(&PathBuf::from("test_file.txt")).unwrap();
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 41);
+
+            let entries = fs.dir_entries("test_dir")?;
+            assert_eq!(entries.len(), 4);
+            let entry = entries
+                .get(&PathBuf::from("test_dir/test_file_2.txt"))
+                .unwrap();
+            assert_eq!(entry.kind, FileKind::File);
+            assert_eq!(entry.size, 47);
+
+            Ok(())
+        }
+
+        #[test]
+        fn link_target_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            assert_eq!(
+                fs.link_target("test_link")?,
+                PathBuf::from("test_dir/test_file_2.txt")
+            );
+
+            assert_eq!(
+            fs.link_target(
+                "test_dir/test_link_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long"
+            )?,
+            PathBuf::from(
+                "test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt"
+            )
+        );
+
+            assert!(fs.link_target("test_file.txt").is_err());
+            assert!(fs.link_target("invalid.unknown").is_err());
+
+            Ok(())
+        }
+
+        #[test]
+        fn open_file_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let mut options = OpenOptions::new();
+            options.read(true).write(true);
+            assert!(fs.open_file("test_file.txt", options.clone()).is_ok());
+            assert!(fs
+                .open_file(
+                    "test_dir/test_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long.txt",
+                    options.clone()
+                )
+                .is_ok()
+            );
+            assert!(fs.open_file("invalid.unknown", options).is_err());
+
+            Ok(())
+        }
+    }
+}

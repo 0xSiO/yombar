@@ -769,10 +769,6 @@ mod tests {
 
             fs.mknod("", name_1, Permissions::from_mode(0o400))?;
 
-            let entry = fs.dir_entry(name_1)?;
-            assert_eq!(entry.kind, FileKind::File);
-            assert!(fs.dir_entry(name_2).is_err());
-
             // short -> short
             rename_test_helper(&fs, "", name_1, "", name_2, FileKind::File)?;
 
@@ -807,6 +803,54 @@ mod tests {
             )?;
 
             fs.unlink("", name_2)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn rename_dir_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let name_1 = OsStr::new("rename_dir_test_siv_ctrmac_1");
+            let name_2 = OsStr::new("rename_dir_test_siv_ctrmac_2");
+
+            fs.mkdir("", name_1, Permissions::from_mode(0o755))?;
+
+            // short -> short
+            rename_test_helper(&fs, "", name_1, "", name_2, FileKind::Directory)?;
+
+            // short -> long
+            rename_test_helper(
+                &fs,
+                "",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                FileKind::Directory
+            )?;
+
+            // long -> long
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                FileKind::Directory
+            )?;
+
+            // long -> short
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                "",
+                name_2,
+                FileKind::Directory
+            )?;
+
+            fs.rmdir("", name_2)?;
 
             Ok(())
         }
@@ -962,10 +1006,6 @@ mod tests {
 
             fs.mknod("", name_1, Permissions::from_mode(0o400))?;
 
-            let entry = fs.dir_entry(name_1)?;
-            assert_eq!(entry.kind, FileKind::File);
-            assert!(fs.dir_entry(name_2).is_err());
-
             // short -> short
             rename_test_helper(&fs, "", name_1, "", name_2, FileKind::File)?;
 
@@ -1000,6 +1040,54 @@ mod tests {
             )?;
 
             fs.unlink("", name_2)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn rename_dir_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+
+            let name_1 = OsStr::new("rename_dir_test_siv_gcm_1");
+            let name_2 = OsStr::new("rename_dir_test_siv_gcm_2");
+
+            fs.mkdir("", name_1, Permissions::from_mode(0o755))?;
+
+            // short -> short
+            rename_test_helper(&fs, "", name_1, "", name_2, FileKind::Directory)?;
+
+            // short -> long
+            rename_test_helper(
+                &fs,
+                "",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                FileKind::Directory
+            )?;
+
+            // long -> long
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_2,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                FileKind::Directory
+            )?;
+
+            // long -> short
+            rename_test_helper(
+                &fs,
+                "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
+                name_1,
+                "",
+                name_2,
+                FileKind::Directory
+            )?;
+
+            fs.rmdir("", name_2)?;
 
             Ok(())
         }

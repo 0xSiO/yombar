@@ -902,6 +902,29 @@ mod tests {
 
             Ok(())
         }
+
+        #[test]
+        fn mknod_test() -> Result<()> {
+            let vault = get_vault_siv_ctrmac()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("mknod_test_siv_ctrmac");
+
+            assert!(fs.dir_entry(name).is_err());
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_eq!(fs.dir_entry(name)?.kind, FileKind::File);
+            fs.unlink("", name)?;
+
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
+            fs.mknod(long_dir, name, Permissions::from_mode(0o646))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?.kind,
+                FileKind::File
+            );
+            fs.unlink(long_dir, name)?;
+
+            Ok(())
+        }
     }
 
     mod siv_gcm {
@@ -1184,6 +1207,29 @@ mod tests {
             )?;
 
             fs.unlink("", name_2)?;
+
+            Ok(())
+        }
+
+        #[test]
+        fn mknod_test() -> Result<()> {
+            let vault = get_vault_siv_gcm()?;
+            let fs = EncryptedFileSystem::new(&vault);
+            let long_dir = "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long";
+            let name = OsStr::new("mknod_test_siv_gcm");
+
+            assert!(fs.dir_entry(name).is_err());
+            fs.mknod("", name, Permissions::from_mode(0o644))?;
+            assert_eq!(fs.dir_entry(name)?.kind, FileKind::File);
+            fs.unlink("", name)?;
+
+            assert!(fs.dir_entry(PathBuf::from(long_dir).join(name)).is_err());
+            fs.mknod(long_dir, name, Permissions::from_mode(0o646))?;
+            assert_eq!(
+                fs.dir_entry(PathBuf::from(long_dir).join(name))?.kind,
+                FileKind::File
+            );
+            fs.unlink(long_dir, name)?;
 
             Ok(())
         }

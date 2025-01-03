@@ -1,11 +1,11 @@
 use std::{ffi::OsStr, path::PathBuf};
 
-use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Tag};
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use rand_core::{OsRng, RngCore};
+use ring::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
 use sha1::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
@@ -43,17 +43,14 @@ impl<'k> Cryptor<'k> {
         &self,
         plaintext: &[u8],
         key: &[u8; SUBKEY_LEN],
-        nonce: &[u8],
+        nonce: &[u8; NONCE_LEN],
         associated_data: &[u8],
     ) -> Result<(Vec<u8>, Tag)> {
-        use aes_gcm::KeyInit;
-
+        let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key)?);
+        let nonce = Nonce::assume_unique_for_key(*nonce);
+        let aad = Aad::from(associated_data);
         let mut buffer = plaintext.to_vec();
-        let tag = Aes256Gcm::new(key.into()).encrypt_in_place_detached(
-            nonce.into(),
-            associated_data,
-            &mut buffer,
-        )?;
+        let tag = key.seal_in_place_separate_tag(nonce, aad, &mut buffer)?;
 
         Ok((buffer, tag))
     }
@@ -62,19 +59,16 @@ impl<'k> Cryptor<'k> {
         &self,
         ciphertext: &[u8],
         key: &[u8; SUBKEY_LEN],
-        nonce: &[u8],
+        nonce: &[u8; NONCE_LEN],
         associated_data: &[u8],
-        tag: &[u8],
+        tag: &[u8; TAG_LEN],
     ) -> Result<Vec<u8>> {
-        use aes_gcm::KeyInit;
-
+        let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key)?);
+        let nonce = Nonce::assume_unique_for_key(*nonce);
+        let aad = Aad::from(associated_data);
+        let tag = Tag::from(*tag);
         let mut buffer = ciphertext.to_vec();
-        Aes256Gcm::new(key.into()).decrypt_in_place_detached(
-            nonce.into(),
-            associated_data,
-            &mut buffer,
-            tag.into(),
-        )?;
+        key.open_in_place_separate_tag(nonce, aad, tag, &mut buffer, 0..)?;
 
         Ok(buffer)
     }
@@ -113,7 +107,7 @@ impl<'k> Cryptor<'k> {
 
         buffer.extend(nonce);
         buffer.extend(ciphertext);
-        buffer.extend(tag);
+        buffer.extend(tag.as_ref());
 
         debug_assert!(buffer.len() <= MAX_ENCRYPTED_CHUNK_LEN);
 
@@ -140,12 +134,14 @@ impl FileCryptor for Cryptor<'_> {
 
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
+        // TODO: nonce length check
+        let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         let (ciphertext, tag) =
-            self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), &header.nonce, &[])?;
+            self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), nonce, &[])?;
 
         buffer.extend(&header.nonce);
         buffer.extend(ciphertext);
-        buffer.extend(tag);
+        buffer.extend(tag.as_ref());
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
 
@@ -159,14 +155,16 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         // Ok to start slicing, we've checked the length
-        let nonce = encrypted_header[..NONCE_LEN].to_vec();
-        let encrypted_payload = &encrypted_header[NONCE_LEN..NONCE_LEN + PAYLOAD_LEN];
-        let tag = &encrypted_header[NONCE_LEN + PAYLOAD_LEN..];
+        let (nonce, rem) = encrypted_header.split_first_chunk::<NONCE_LEN>().unwrap();
+        let (enc_payload, rem) = rem.split_first_chunk::<PAYLOAD_LEN>().unwrap();
+        let tag = rem.first_chunk::<TAG_LEN>().unwrap();
 
-        let payload =
-            self.aes_gcm_decrypt(encrypted_payload, self.key.enc_key(), &nonce, &[], tag)?;
+        let payload = self.aes_gcm_decrypt(enc_payload, self.key.enc_key(), nonce, &[], tag)?;
 
-        Ok(FileHeader { nonce, payload })
+        Ok(FileHeader {
+            nonce: nonce.to_vec(),
+            payload,
+        })
     }
 
     fn encrypt_chunk(

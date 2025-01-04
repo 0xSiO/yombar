@@ -4,7 +4,7 @@ use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
-use rand_core::{OsRng, RngCore};
+use rand::Rng;
 use ring::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
@@ -181,7 +181,7 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         let mut nonce = [0_u8; NONCE_LEN];
-        OsRng.try_fill_bytes(&mut nonce)?;
+        rand::thread_rng().try_fill(&mut nonce)?;
         self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)
     }
 

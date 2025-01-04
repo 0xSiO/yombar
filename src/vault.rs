@@ -9,7 +9,6 @@ use color_eyre::{
     Section,
 };
 use jsonwebtoken::{Algorithm, Header, TokenData, Validation};
-use rand_core::OsRng;
 use scrypt::{password_hash::SaltString, Params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -51,7 +50,7 @@ impl Vault {
     // TODO: Maybe make creation options more configurable
     pub fn create(path: impl AsRef<Path>, password: String) -> Result<Self> {
         let params = Params::recommended();
-        let salt_string = SaltString::generate(OsRng);
+        let salt_string = SaltString::generate(rand::thread_rng());
         let kek = util::derive_kek(password, params, salt_string.as_salt())?;
         let master_key = MasterKey::new()?;
 

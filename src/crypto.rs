@@ -1,6 +1,6 @@
 use std::{ffi::OsStr, path::PathBuf};
 
-use rand_core::{OsRng, RngCore};
+use rand::Rng;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{key::SUBKEY_LEN, Result};
@@ -19,10 +19,9 @@ pub struct FileHeader {
 impl FileHeader {
     fn new(nonce_len: usize, payload_len: usize) -> Result<Self> {
         let mut nonce = vec![0_u8; nonce_len];
-        OsRng.try_fill_bytes(&mut nonce)?;
-
         let mut payload = vec![0_u8; payload_len];
-        OsRng.try_fill_bytes(&mut payload)?;
+        rand::thread_rng().try_fill(nonce.as_mut_slice())?;
+        rand::thread_rng().try_fill(payload.as_mut_slice())?;
 
         // Overwrite first portion with reserved bytes
         payload[..HEADER_RESERVED_LEN].copy_from_slice(&[0xff; HEADER_RESERVED_LEN]);

@@ -10,7 +10,7 @@ use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
-use rand_core::{self, OsRng, RngCore};
+use rand::Rng;
 use sha1_checked::{Digest, Sha1};
 use sha2::Sha256;
 use unicode_normalization::UnicodeNormalization;
@@ -160,7 +160,7 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         let mut nonce = [0_u8; NONCE_LEN];
-        OsRng.try_fill_bytes(&mut nonce)?;
+        rand::thread_rng().try_fill(&mut nonce)?;
         self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)
     }
 

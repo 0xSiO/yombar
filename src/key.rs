@@ -3,7 +3,7 @@ use std::{fmt::Debug, fs, path::Path};
 use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
-use rand_core::{self, OsRng, RngCore};
+use rand::Rng;
 use scrypt::{
     password_hash::{Salt, SaltString},
     Params,
@@ -21,7 +21,7 @@ pub struct MasterKey([u8; SUBKEY_LEN * 2]);
 impl MasterKey {
     pub fn new() -> Result<Self> {
         let mut key = Self([0_u8; SUBKEY_LEN * 2]);
-        OsRng.try_fill_bytes(&mut key.0)?;
+        rand::thread_rng().try_fill(&mut key.0)?;
         Ok(key)
     }
 

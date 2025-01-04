@@ -6,7 +6,7 @@ use std::{
 
 use base64ct::{Base64Url, Encoding};
 use color_eyre::eyre::bail;
-use sha1::{Digest, Sha1};
+use sha1_checked::{Digest, Sha1};
 
 use crate::{crypto::FileCryptor, vault::Vault, Result};
 

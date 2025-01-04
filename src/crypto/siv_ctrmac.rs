@@ -11,7 +11,7 @@ use color_eyre::eyre::bail;
 use ctr::Ctr128BE;
 use hmac::{Hmac, Mac};
 use rand_core::{self, OsRng, RngCore};
-use sha1::{Digest, Sha1};
+use sha1_checked::{Digest, Sha1};
 use sha2::Sha256;
 use unicode_normalization::UnicodeNormalization;
 

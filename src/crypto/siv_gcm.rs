@@ -6,7 +6,7 @@ use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use rand_core::{OsRng, RngCore};
 use ring::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
-use sha1::{Digest, Sha1};
+use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
@@ -39,6 +39,7 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
+    // TODO: Use AES-GCM from ring until https://github.com/RustCrypto/AEADs/issues/74 is resolved
     fn aes_gcm_encrypt(
         &self,
         plaintext: &[u8],
@@ -55,6 +56,7 @@ impl<'k> Cryptor<'k> {
         Ok((buffer, tag))
     }
 
+    // TODO: Use AES-GCM from ring until https://github.com/RustCrypto/AEADs/issues/74 is resolved
     fn aes_gcm_decrypt(
         &self,
         ciphertext: &[u8],

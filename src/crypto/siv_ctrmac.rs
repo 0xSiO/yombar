@@ -192,20 +192,17 @@ impl FileCryptor for Cryptor<'_> {
             bail!("invalid ciphertext chunk length: {}", encrypted_chunk.len());
         }
 
-        // First, verify the HMAC
+        // Ok to convert to sized arrays - we know the lengths at this point
         let (nonce_and_chunk, expected_mac) =
-            encrypted_chunk.split_at(encrypted_chunk.len() - MAC_LEN);
+            encrypted_chunk.split_last_chunk::<MAC_LEN>().unwrap();
+        let (nonce, chunk) = nonce_and_chunk.split_first_chunk::<NONCE_LEN>().unwrap();
+
         let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
         if actual_mac != expected_mac {
             bail!("failed to verify chunk MAC");
         }
 
-        // Next, decrypt the chunk
-        let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
-        // Ok to convert to sized arrays - we know the lengths at this point
-        let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-
-        self.aes_ctr(chunk, header.content_key(), &nonce)
+        self.aes_ctr(chunk, header.content_key(), nonce)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {

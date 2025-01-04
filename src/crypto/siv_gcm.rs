@@ -199,16 +199,14 @@ impl FileCryptor for Cryptor<'_> {
             bail!("invalid ciphertext chunk length: {}", encrypted_chunk.len());
         }
 
-        let (nonce_and_chunk, tag) = encrypted_chunk.split_at(encrypted_chunk.len() - TAG_LEN);
-        let (nonce, chunk) = nonce_and_chunk.split_at(NONCE_LEN);
         // Ok to convert to sized arrays - we know the lengths at this point
-        let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
-        let tag: [u8; TAG_LEN] = tag.try_into().unwrap();
+        let (nonce_and_chunk, tag) = encrypted_chunk.split_last_chunk::<TAG_LEN>().unwrap();
+        let (nonce, chunk) = nonce_and_chunk.split_first_chunk::<NONCE_LEN>().unwrap();
 
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
 
-        self.aes_gcm_decrypt(chunk, header.content_key(), &nonce, &associated_data, &tag)
+        self.aes_gcm_decrypt(chunk, header.content_key(), nonce, &associated_data, tag)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {

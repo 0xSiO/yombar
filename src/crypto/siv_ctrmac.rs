@@ -43,7 +43,12 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    fn aes_ctr(&self, message: &[u8], key: &[u8; SUBKEY_LEN], nonce: &[u8]) -> Result<Vec<u8>> {
+    fn aes_ctr(
+        &self,
+        message: &[u8],
+        key: &[u8; SUBKEY_LEN],
+        nonce: &[u8; NONCE_LEN],
+    ) -> Result<Vec<u8>> {
         let mut buffer = message.to_vec();
         Ctr128BE::<Aes256>::new(key.into(), nonce.into()).try_apply_keystream(&mut buffer)?;
         Ok(buffer)
@@ -81,7 +86,7 @@ impl<'k> Cryptor<'k> {
 
     fn encrypt_chunk_with_nonce(
         &self,
-        nonce: &[u8],
+        nonce: &[u8; NONCE_LEN],
         chunk: &[u8],
         header: &FileHeader,
         chunk_number: usize,
@@ -116,10 +121,17 @@ impl FileCryptor for Cryptor<'_> {
 
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
-        buffer.extend(&header.nonce);
-        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), &header.nonce)?);
+        if header.nonce.len() != NONCE_LEN {
+            bail!("invalid nonce length: {}", header.nonce.len());
+        }
+
+        let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
+        buffer.extend(nonce);
+        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), nonce)?);
         buffer.extend(util::hmac(self.key, &buffer));
+
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
+
         Ok(buffer)
     }
 

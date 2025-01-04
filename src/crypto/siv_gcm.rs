@@ -134,12 +134,15 @@ impl FileCryptor for Cryptor<'_> {
 
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(ENCRYPTED_HEADER_LEN);
-        // TODO: nonce length check
+        if header.nonce.len() != NONCE_LEN {
+            bail!("invalid nonce length: {}", header.nonce.len());
+        }
+
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         let (ciphertext, tag) =
             self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), nonce, &[])?;
 
-        buffer.extend(&header.nonce);
+        buffer.extend(nonce);
         buffer.extend(ciphertext);
         buffer.extend(tag.as_ref());
 

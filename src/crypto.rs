@@ -9,29 +9,26 @@ pub mod siv_ctrmac;
 pub mod siv_gcm;
 
 const HEADER_RESERVED_LEN: usize = 8;
+const HEADER_PAYLOAD_LEN: usize = HEADER_RESERVED_LEN + SUBKEY_LEN;
 
 #[derive(Debug, PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct FileHeader {
     nonce: Vec<u8>,
-    payload: Vec<u8>,
+    payload: [u8; HEADER_PAYLOAD_LEN],
 }
 
 impl FileHeader {
-    fn new(nonce_len: usize, payload_len: usize) -> Result<Self> {
+    fn new(nonce_len: usize) -> Result<Self> {
         let mut nonce = vec![0_u8; nonce_len];
-        let mut payload = vec![0_u8; payload_len];
+        let mut payload = [0xff_u8; HEADER_RESERVED_LEN + SUBKEY_LEN];
         rand::thread_rng().try_fill(nonce.as_mut_slice())?;
-        rand::thread_rng().try_fill(payload.as_mut_slice())?;
-
-        // Overwrite first portion with reserved bytes
-        payload[..HEADER_RESERVED_LEN].copy_from_slice(&[0xff; HEADER_RESERVED_LEN]);
+        rand::thread_rng().try_fill(&mut payload[HEADER_RESERVED_LEN..])?;
 
         Ok(Self { nonce, payload })
     }
 
-    fn content_key(&self) -> [u8; SUBKEY_LEN] {
-        debug_assert_eq!(self.payload.len() - HEADER_RESERVED_LEN, SUBKEY_LEN);
-        self.payload[HEADER_RESERVED_LEN..].try_into().unwrap()
+    fn content_key(&self) -> &[u8; SUBKEY_LEN] {
+        self.payload.last_chunk::<SUBKEY_LEN>().unwrap()
     }
 }
 

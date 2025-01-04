@@ -20,16 +20,14 @@ use crate::{
     util, Result,
 };
 
-use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
+use super::{FileCryptor, FileHeader, HEADER_PAYLOAD_LEN};
 
 // General constants
 const NONCE_LEN: usize = 16;
 const MAC_LEN: usize = 32;
 
 // File header constants
-const CONTENT_KEY_LEN: usize = 32;
-const PAYLOAD_LEN: usize = HEADER_RESERVED_LEN + CONTENT_KEY_LEN;
-const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + MAC_LEN;
+const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + HEADER_PAYLOAD_LEN + MAC_LEN;
 
 // File content constants
 const MAX_CHUNK_LEN: usize = 32 * 1024;
@@ -90,7 +88,7 @@ impl<'k> Cryptor<'k> {
     ) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(nonce);
-        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
+        buffer.extend(self.aes_ctr(chunk, header.content_key(), nonce)?);
         buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
 
         debug_assert!(buffer.len() <= MAX_ENCRYPTED_CHUNK_LEN);
@@ -113,7 +111,7 @@ impl FileCryptor for Cryptor<'_> {
     }
 
     fn new_header(&self) -> Result<FileHeader> {
-        FileHeader::new(NONCE_LEN, PAYLOAD_LEN)
+        FileHeader::new(NONCE_LEN)
     }
 
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
@@ -132,20 +130,25 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         // Ok to start slicing, we've checked the length
-        let expected_mac = &encrypted_header[NONCE_LEN + PAYLOAD_LEN..];
+        let (nonce, rest) = encrypted_header.split_first_chunk::<NONCE_LEN>().unwrap();
+        let (enc_payload, expected_mac) = rest.split_first_chunk::<HEADER_PAYLOAD_LEN>().unwrap();
 
         // First, verify the HMAC
-        let actual_mac = util::hmac(self.key, &encrypted_header[..NONCE_LEN + PAYLOAD_LEN]);
+        let actual_mac = util::hmac(
+            self.key,
+            &encrypted_header[..NONCE_LEN + HEADER_PAYLOAD_LEN],
+        );
         if actual_mac != expected_mac {
             bail!("failed to verify header MAC");
         }
 
         // Next, decrypt the payload
-        let nonce = encrypted_header[..NONCE_LEN].to_vec();
-        let encrypted_payload = &encrypted_header[NONCE_LEN..NONCE_LEN + PAYLOAD_LEN];
-        let payload = self.aes_ctr(encrypted_payload, self.key.enc_key(), &nonce)?;
+        let payload = self.aes_ctr(enc_payload, self.key.enc_key(), nonce)?;
 
-        Ok(FileHeader { nonce, payload })
+        Ok(FileHeader {
+            nonce: nonce.to_vec(),
+            payload: *payload.first_chunk::<HEADER_PAYLOAD_LEN>().unwrap(),
+        })
     }
 
     fn encrypt_chunk(
@@ -190,7 +193,7 @@ impl FileCryptor for Cryptor<'_> {
         // Ok to convert to sized arrays - we know the lengths at this point
         let nonce: [u8; NONCE_LEN] = nonce.try_into().unwrap();
 
-        self.aes_ctr(chunk, &header.content_key(), &nonce)
+        self.aes_ctr(chunk, header.content_key(), &nonce)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
@@ -238,12 +241,11 @@ mod tests {
 
     #[test]
     fn file_chunk_test() {
-        // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]) };
+        let key = MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]);
         let cryptor = Cryptor::new(&key);
         let header = FileHeader {
             nonce: vec![19; NONCE_LEN],
-            payload: vec![23; PAYLOAD_LEN],
+            payload: [23; HEADER_PAYLOAD_LEN],
         };
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

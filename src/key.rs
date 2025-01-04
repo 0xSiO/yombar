@@ -25,22 +25,18 @@ impl MasterKey {
         Ok(key)
     }
 
-    /// Create a [`MasterKey`] from the provided byte array.
-    ///
-    /// # Safety
-    ///
-    /// - `bytes` should contain secret, random bytes with sufficient entropy
+    /// Create a [`MasterKey`] from the provided byte array. For testing purposes only.
     #[cfg(test)]
-    pub(crate) unsafe fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
+    pub(crate) fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
         MasterKey(bytes)
     }
 
     pub(crate) fn enc_key(&self) -> &[u8; SUBKEY_LEN] {
-        self.0[0..SUBKEY_LEN].try_into().unwrap()
+        self.0.first_chunk::<SUBKEY_LEN>().unwrap()
     }
 
     pub(crate) fn mac_key(&self) -> &[u8; SUBKEY_LEN] {
-        self.0[SUBKEY_LEN..].try_into().unwrap()
+        self.0.last_chunk::<SUBKEY_LEN>().unwrap()
     }
 
     pub(crate) fn wrap(
@@ -169,6 +165,7 @@ impl WrappedKey {
         RawWrappedKey {
             version: 999,
             scrypt_salt: self.scrypt_salt.to_string(),
+            // TODO: Use Params::n from https://github.com/RustCrypto/password-hashes/pull/544
             scrypt_cost_param: 2_u32.pow(self.scrypt_params.log_n() as u32),
             scrypt_block_size: self.scrypt_params.r(),
             primary_master_key: Base64::encode_string(&self.enc_key),

@@ -14,16 +14,14 @@ use crate::{
     Result,
 };
 
-use super::{FileCryptor, FileHeader, HEADER_RESERVED_LEN};
+use super::{FileCryptor, FileHeader, HEADER_PAYLOAD_LEN};
 
 // General constants
 const NONCE_LEN: usize = 12;
 const TAG_LEN: usize = 16;
 
 // File header constants
-const CONTENT_KEY_LEN: usize = 32;
-const PAYLOAD_LEN: usize = HEADER_RESERVED_LEN + CONTENT_KEY_LEN;
-const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + PAYLOAD_LEN + TAG_LEN;
+const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + HEADER_PAYLOAD_LEN + TAG_LEN;
 
 // File content constants
 const MAX_CHUNK_LEN: usize = 32 * 1024;
@@ -105,7 +103,7 @@ impl<'k> Cryptor<'k> {
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
         let (ciphertext, tag) =
-            self.aes_gcm_encrypt(chunk, &header.content_key(), nonce, &associated_data)?;
+            self.aes_gcm_encrypt(chunk, header.content_key(), nonce, &associated_data)?;
 
         buffer.extend(nonce);
         buffer.extend(ciphertext);
@@ -131,7 +129,7 @@ impl FileCryptor for Cryptor<'_> {
     }
 
     fn new_header(&self) -> Result<FileHeader> {
-        FileHeader::new(NONCE_LEN, PAYLOAD_LEN)
+        FileHeader::new(NONCE_LEN)
     }
 
     fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
@@ -157,15 +155,15 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         // Ok to start slicing, we've checked the length
-        let (nonce, rem) = encrypted_header.split_first_chunk::<NONCE_LEN>().unwrap();
-        let (enc_payload, rem) = rem.split_first_chunk::<PAYLOAD_LEN>().unwrap();
-        let tag = rem.first_chunk::<TAG_LEN>().unwrap();
+        let (nonce, rest) = encrypted_header.split_first_chunk::<NONCE_LEN>().unwrap();
+        let (enc_payload, rest) = rest.split_first_chunk::<HEADER_PAYLOAD_LEN>().unwrap();
+        let tag = rest.first_chunk::<TAG_LEN>().unwrap();
 
         let payload = self.aes_gcm_decrypt(enc_payload, self.key.enc_key(), nonce, &[], tag)?;
 
         Ok(FileHeader {
             nonce: nonce.to_vec(),
-            payload,
+            payload: *payload.first_chunk::<HEADER_PAYLOAD_LEN>().unwrap(),
         })
     }
 
@@ -207,7 +205,7 @@ impl FileCryptor for Cryptor<'_> {
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
 
-        self.aes_gcm_decrypt(chunk, &header.content_key(), &nonce, &associated_data, &tag)
+        self.aes_gcm_decrypt(chunk, header.content_key(), &nonce, &associated_data, &tag)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
@@ -255,12 +253,11 @@ mod tests {
 
     #[test]
     fn file_chunk_test() {
-        // Safe, this is for test purposes only
-        let key = unsafe { MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]) };
+        let key = MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]);
         let cryptor = Cryptor::new(&key);
         let header = FileHeader {
             nonce: vec![19; NONCE_LEN],
-            payload: vec![23; PAYLOAD_LEN],
+            payload: [23; HEADER_PAYLOAD_LEN],
         };
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

@@ -17,6 +17,7 @@ mod translator;
 
 #[cfg(unix)]
 pub mod fuse;
+#[cfg(feature = "webdav")]
 pub mod webdav;
 
 pub use encrypted_file::EncryptedFile;

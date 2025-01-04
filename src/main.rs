@@ -1,13 +1,11 @@
 use std::{collections::VecDeque, env, path::PathBuf};
 
-use axum::routing::any;
 use clap::{ArgAction, Parser, Subcommand};
 use color_eyre::eyre::bail;
-use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
-    fs::{webdav::WebDavFileSystem, DirEntry, EncryptedFileSystem, FileKind, Translator},
+    fs::{DirEntry, EncryptedFileSystem, FileKind, Translator},
     vault::Vault,
     Result,
 };
@@ -43,6 +41,7 @@ pub enum Command {
         read_only: bool,
     },
     /// Serve a vault from a local WebDAV server
+    #[cfg(feature = "webdav")]
     Serve {
         /// Path to encrypted vault directory
         vault_path: PathBuf,
@@ -120,10 +119,15 @@ fn main() -> Result<()> {
                 &mount_options,
             )?;
         }
+        #[cfg(feature = "webdav")]
         Command::Serve {
             vault_path,
             read_only,
         } => {
+            use axum::routing::any;
+            use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
+            use yombar::fs::webdav::WebDavFileSystem;
+
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 

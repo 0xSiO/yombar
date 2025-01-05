@@ -46,7 +46,6 @@ impl MasterKey {
         key_encryption_key: &KekAes256,
         scrypt_params: Params,
         scrypt_salt: SaltString,
-        format_version: u32,
     ) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
         let mut wrapped_mac_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
@@ -59,7 +58,7 @@ impl MasterKey {
             scrypt_params,
             enc_key: wrapped_enc_master_key,
             mac_key: wrapped_mac_master_key,
-            version_mac: util::hmac(self, &format_version.to_be_bytes()),
+            version_mac: util::hmac(self, &999_u32.to_be_bytes()),
         })
     }
 
@@ -117,6 +116,7 @@ pub(crate) struct WrappedKey {
     pub(crate) scrypt_params: Params,
     pub(crate) enc_key: [u8; ENCRYPTED_SUBKEY_LEN],
     pub(crate) mac_key: [u8; ENCRYPTED_SUBKEY_LEN],
+    // This field is not used and is only here for legacy compatibility
     pub(crate) version_mac: CtOutput<Hmac<Sha256>>,
 }
 
@@ -191,7 +191,7 @@ mod tests {
         let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
         let salt_string = SaltString::encode_b64(b"test salt").unwrap();
         let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
-        let wrapped_key = key.wrap(&kek, params, salt_string.clone(), 8).unwrap();
+        let wrapped_key = key.wrap(&kek, params, salt_string.clone()).unwrap();
 
         assert_eq!(wrapped_key.scrypt_salt, salt_string);
         assert_eq!(wrapped_key.scrypt_params.log_n(), params.log_n());
@@ -207,7 +207,7 @@ mod tests {
         );
         assert_eq!(
             Base64::encode_string(&wrapped_key.version_mac.clone().into_bytes()),
-            "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
+            "MgStdpT0momk1zf/vntqO8L+GKU0ejq5xKsTBl38zhE="
         );
 
         assert_eq!(MasterKey::from_wrapped(&wrapped_key, &kek).unwrap(), key);

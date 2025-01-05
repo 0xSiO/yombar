@@ -64,7 +64,7 @@ impl Vault {
         };
 
         let config_jwt = master_key.sign_jwt(header.clone(), claims)?;
-        let wrapped_key = master_key.wrap(&kek, params, salt_string, 8)?;
+        let wrapped_key = master_key.wrap(&kek, params, salt_string)?;
 
         fs::create_dir_all(path.as_ref())?;
         let path = path.as_ref().canonicalize()?;
@@ -116,11 +116,6 @@ impl Vault {
             validation.required_spec_claims.clear();
 
             let config: TokenData<VaultConfig> = master_key.verify_jwt(jwt, validation)?;
-            let expected_version_mac = wrapped_key.version_mac;
-            let actual_version_mac = util::hmac(&master_key, &config.claims.format.to_be_bytes());
-            if actual_version_mac != expected_version_mac {
-                bail!("vault format version does not match key");
-            }
 
             // Only version 8 is supported for now
             match config.claims.format {

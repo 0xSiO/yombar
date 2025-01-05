@@ -102,7 +102,11 @@ impl Vault {
         if master_key_uri.starts_with("masterkeyfile:") {
             let key_path = config_dir.join(master_key_uri.split_once("masterkeyfile:").unwrap().1);
             let wrapped_key = WrappedKey::from_file(key_path)?;
-            let kek = util::derive_kek(password, wrapped_key.params(), wrapped_key.salt())?;
+            let kek = util::derive_kek(
+                password,
+                wrapped_key.scrypt_params,
+                wrapped_key.scrypt_salt.as_salt(),
+            )?;
             let master_key = MasterKey::from_wrapped(&wrapped_key, &kek)
                 .context("failed to unwrap master key")
                 .suggestion("make sure you're using the correct password")?;

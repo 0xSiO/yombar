@@ -6,10 +6,7 @@ use color_eyre::eyre::OptionExt;
 use hmac::{digest::CtOutput, Hmac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rand::Rng;
-use scrypt::{
-    password_hash::{Salt, SaltString},
-    Params,
-};
+use scrypt::{password_hash::SaltString, Params};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -71,8 +68,8 @@ impl MasterKey {
         key_encryption_key: &KekAes256,
     ) -> Result<Self> {
         let mut buffer = [0_u8; SUBKEY_LEN * 2];
-        key_encryption_key.unwrap(wrapped_key.enc_key(), &mut buffer[0..SUBKEY_LEN])?;
-        key_encryption_key.unwrap(wrapped_key.mac_key(), &mut buffer[SUBKEY_LEN..])?;
+        key_encryption_key.unwrap(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
+        key_encryption_key.unwrap(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
         Ok(MasterKey(buffer))
     }
 
@@ -153,22 +150,7 @@ impl WrappedKey {
         })
     }
 
-    pub(crate) fn salt(&self) -> Salt {
-        self.scrypt_salt.as_salt()
-    }
-
-    pub(crate) fn params(&self) -> Params {
-        self.scrypt_params
-    }
-
-    pub(crate) fn enc_key(&self) -> &[u8] {
-        &self.enc_key
-    }
-
-    pub(crate) fn mac_key(&self) -> &[u8] {
-        &self.mac_key
-    }
-
+    // TODO: We should probably verify against this when opening a vault
     #[cfg(test)]
     pub(crate) fn version_mac(&self) -> &CtOutput<Hmac<Sha256>> {
         &self.version_mac
@@ -222,11 +204,11 @@ mod tests {
         assert_eq!(wrapped_key.scrypt_params.r(), params.r());
         assert_eq!(wrapped_key.scrypt_params.p(), params.p());
         assert_eq!(
-            Base64::encode_string(wrapped_key.enc_key()),
+            Base64::encode_string(&wrapped_key.enc_key),
             "hVcTLMybIXICR26f5zpegiH/OpXnNv4lvytd6tATj87Di4lPhD5t0Q=="
         );
         assert_eq!(
-            Base64::encode_string(wrapped_key.mac_key()),
+            Base64::encode_string(&wrapped_key.mac_key),
             "LiBoVDJthshFhm1Q+T3de2Ynpfb5Yx63KrRyjqSGBNp3gyFznhjnNQ=="
         );
         assert_eq!(

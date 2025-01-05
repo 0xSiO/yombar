@@ -51,8 +51,8 @@ impl MasterKey {
         scrypt_salt: SaltString,
         format_version: u32,
     ) -> Result<WrappedKey> {
-        let mut wrapped_enc_master_key = [0_u8; SUBKEY_LEN + 8];
-        let mut wrapped_mac_master_key = [0_u8; SUBKEY_LEN + 8];
+        let mut wrapped_enc_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
+        let mut wrapped_mac_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
 
         key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
         key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
@@ -129,21 +129,15 @@ impl WrappedKey {
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
         let recommended_params = Params::recommended();
         let salt_no_padding = raw.scrypt_salt.replace('=', "");
-        let mut enc_key_bytes = raw.primary_master_key.into_bytes();
-        let mut mac_key_bytes = raw.hmac_master_key.into_bytes();
-        let mut version_mac_bytes = raw.version_mac.into_bytes();
-        let enc_key = enc_key_bytes
-            .first_chunk_mut::<ENCRYPTED_SUBKEY_LEN>()
+        let enc_key = *Base64::decode_vec(&raw.primary_master_key)?
+            .first_chunk::<ENCRYPTED_SUBKEY_LEN>()
             .ok_or_eyre("invalid encryption key length")?;
-        let mac_key = mac_key_bytes
-            .first_chunk_mut::<ENCRYPTED_SUBKEY_LEN>()
+        let mac_key = *Base64::decode_vec(&raw.hmac_master_key)?
+            .first_chunk::<ENCRYPTED_SUBKEY_LEN>()
             .ok_or_eyre("invalid mac key length")?;
-        let version_mac = version_mac_bytes
-            .first_chunk_mut::<MAC_LEN>()
+        let version_mac = *Base64::decode_vec(&raw.version_mac)?
+            .first_chunk::<MAC_LEN>()
             .ok_or_eyre("invalid version mac length")?;
-        Base64::decode_in_place(enc_key)?;
-        Base64::decode_in_place(mac_key)?;
-        Base64::decode_in_place(version_mac)?;
 
         Ok(Self {
             scrypt_salt: SaltString::from_b64(&salt_no_padding)?,
@@ -153,9 +147,9 @@ impl WrappedKey {
                 recommended_params.p(),
                 SUBKEY_LEN,
             )?,
-            enc_key: *enc_key,
-            mac_key: *mac_key,
-            version_mac: CtOutput::new((*version_mac).into()),
+            enc_key,
+            mac_key,
+            version_mac: CtOutput::new(version_mac.into()),
         })
     }
 

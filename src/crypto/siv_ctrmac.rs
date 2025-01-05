@@ -9,10 +9,9 @@ use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use ctr::Ctr128BE;
-use hmac::{Hmac, Mac};
+use hmac::digest::CtOutput;
 use rand::Rng;
 use sha1_checked::{Digest, Sha1};
-use sha2::Sha256;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
@@ -72,18 +71,6 @@ impl<'k> Cryptor<'k> {
         Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
     }
 
-    fn chunk_hmac(&self, data: &[u8], header: &FileHeader, chunk_number: usize) -> Vec<u8> {
-        Hmac::<Sha256>::new_from_slice(self.key.mac_key())
-            // Ok to unwrap, HMAC can take keys of any size
-            .unwrap()
-            .chain_update(&header.nonce)
-            .chain_update(chunk_number.to_be_bytes())
-            .chain_update(data)
-            .finalize()
-            .into_bytes()
-            .to_vec()
-    }
-
     fn encrypt_chunk_with_nonce(
         &self,
         nonce: &[u8; NONCE_LEN],
@@ -94,7 +81,13 @@ impl<'k> Cryptor<'k> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(nonce);
         buffer.extend(self.aes_ctr(chunk, header.content_key(), nonce)?);
-        buffer.extend(self.chunk_hmac(&buffer, header, chunk_number));
+        buffer.extend(
+            util::hmac(
+                self.key,
+                &[&header.nonce, chunk_number.to_be_bytes().as_ref(), &buffer].concat(),
+            )
+            .into_bytes(),
+        );
 
         debug_assert!(buffer.len() <= MAX_ENCRYPTED_CHUNK_LEN);
 
@@ -128,7 +121,7 @@ impl FileCryptor for Cryptor<'_> {
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         buffer.extend(nonce);
         buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), nonce)?);
-        buffer.extend(util::hmac(self.key, &buffer));
+        buffer.extend(util::hmac(self.key, &buffer).into_bytes());
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
 
@@ -144,8 +137,10 @@ impl FileCryptor for Cryptor<'_> {
         // Ok to start slicing, we've checked the length
         let (nonce, rest) = encrypted_header.split_first_chunk::<NONCE_LEN>().unwrap();
         let (enc_payload, expected_mac) = rest.split_first_chunk::<HEADER_PAYLOAD_LEN>().unwrap();
+        let expected_mac = expected_mac.first_chunk::<MAC_LEN>().unwrap();
 
         // First, verify the HMAC
+        let expected_mac = CtOutput::new((*expected_mac).into());
         let actual_mac = util::hmac(
             self.key,
             &encrypted_header[..NONCE_LEN + HEADER_PAYLOAD_LEN],
@@ -197,7 +192,17 @@ impl FileCryptor for Cryptor<'_> {
             encrypted_chunk.split_last_chunk::<MAC_LEN>().unwrap();
         let (nonce, chunk) = nonce_and_chunk.split_first_chunk::<NONCE_LEN>().unwrap();
 
-        let actual_mac = self.chunk_hmac(nonce_and_chunk, header, chunk_number);
+        // First, verify the HMAC
+        let expected_mac = CtOutput::new((*expected_mac).into());
+        let actual_mac = util::hmac(
+            self.key,
+            &[
+                &header.nonce,
+                chunk_number.to_be_bytes().as_ref(),
+                nonce_and_chunk,
+            ]
+            .concat(),
+        );
         if actual_mac != expected_mac {
             bail!("failed to verify chunk MAC");
         }

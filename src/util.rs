@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 
 use aes_kw::{Kek, KekAes256};
-use hmac::{Hmac, Mac};
+use hmac::{digest::CtOutput, Hmac, Mac};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
@@ -29,14 +29,11 @@ pub(crate) fn derive_kek(mut password: String, params: Params, salt: Salt) -> Re
     Ok(Kek::from(kek_bytes))
 }
 
-pub(crate) fn hmac(key: &MasterKey, data: &[u8]) -> Vec<u8> {
+pub(crate) fn hmac(key: &MasterKey, data: &[u8]) -> CtOutput<Hmac<Sha256>> {
     Hmac::<Sha256>::new_from_slice(key.mac_key())
-        // Ok to unwrap, HMAC can take keys of any size
-        .unwrap()
+        .expect("HMAC can take keys of any size")
         .chain_update(data)
         .finalize()
-        .into_bytes()
-        .to_vec()
 }
 
 /// A modified version of [`Read::read_exact`] that ignores an unexpected EOF, returning whether
@@ -106,7 +103,7 @@ mod tests {
     fn hmac_test() {
         let key = MasterKey::from_bytes([15_u8; SUBKEY_LEN * 2]);
         assert_eq!(
-            Base64::encode_string(&hmac(&key, b"here is some data")),
+            Base64::encode_string(&hmac(&key, b"here is some data").into_bytes()),
             "CWTyTEOJ2pDGgMpGjHgQV8T+EjEJYliXRQL2XzgT1W0="
         );
     }

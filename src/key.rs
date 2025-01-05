@@ -2,6 +2,8 @@ use std::{fmt::Debug, fs, path::Path};
 
 use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
+use color_eyre::eyre::OptionExt;
+use hmac::{digest::CtOutput, Hmac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
 use rand::Rng;
 use scrypt::{
@@ -9,11 +11,14 @@ use scrypt::{
     Params,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{util, Result};
 
 pub(crate) const SUBKEY_LEN: usize = 32;
+const ENCRYPTED_SUBKEY_LEN: usize = SUBKEY_LEN + 8;
+const MAC_LEN: usize = 32;
 
 #[derive(PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; SUBKEY_LEN * 2]);
@@ -55,8 +60,8 @@ impl MasterKey {
         Ok(WrappedKey {
             scrypt_salt,
             scrypt_params,
-            enc_key: wrapped_enc_master_key.to_vec(),
-            mac_key: wrapped_mac_master_key.to_vec(),
+            enc_key: wrapped_enc_master_key,
+            mac_key: wrapped_mac_master_key,
             version_mac: util::hmac(self, &format_version.to_be_bytes()),
         })
     }
@@ -110,13 +115,12 @@ struct RawWrappedKey {
     version_mac: String,
 }
 
-#[derive(Debug)]
 pub(crate) struct WrappedKey {
     pub(crate) scrypt_salt: SaltString,
     pub(crate) scrypt_params: Params,
-    pub(crate) enc_key: Vec<u8>,
-    pub(crate) mac_key: Vec<u8>,
-    pub(crate) version_mac: Vec<u8>,
+    pub(crate) enc_key: [u8; ENCRYPTED_SUBKEY_LEN],
+    pub(crate) mac_key: [u8; ENCRYPTED_SUBKEY_LEN],
+    pub(crate) version_mac: CtOutput<Hmac<Sha256>>,
 }
 
 impl WrappedKey {
@@ -125,6 +129,21 @@ impl WrappedKey {
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
         let recommended_params = Params::recommended();
         let salt_no_padding = raw.scrypt_salt.replace('=', "");
+        let mut enc_key_bytes = raw.primary_master_key.into_bytes();
+        let mut mac_key_bytes = raw.hmac_master_key.into_bytes();
+        let mut version_mac_bytes = raw.version_mac.into_bytes();
+        let enc_key = enc_key_bytes
+            .first_chunk_mut::<ENCRYPTED_SUBKEY_LEN>()
+            .ok_or_eyre("invalid encryption key length")?;
+        let mac_key = mac_key_bytes
+            .first_chunk_mut::<ENCRYPTED_SUBKEY_LEN>()
+            .ok_or_eyre("invalid mac key length")?;
+        let version_mac = version_mac_bytes
+            .first_chunk_mut::<MAC_LEN>()
+            .ok_or_eyre("invalid version mac length")?;
+        Base64::decode_in_place(enc_key)?;
+        Base64::decode_in_place(mac_key)?;
+        Base64::decode_in_place(version_mac)?;
 
         Ok(Self {
             scrypt_salt: SaltString::from_b64(&salt_no_padding)?,
@@ -134,9 +153,9 @@ impl WrappedKey {
                 recommended_params.p(),
                 SUBKEY_LEN,
             )?,
-            enc_key: Base64::decode_vec(&raw.primary_master_key)?,
-            mac_key: Base64::decode_vec(&raw.hmac_master_key)?,
-            version_mac: Base64::decode_vec(&raw.version_mac)?,
+            enc_key: *enc_key,
+            mac_key: *mac_key,
+            version_mac: CtOutput::new((*version_mac).into()),
         })
     }
 
@@ -157,7 +176,7 @@ impl WrappedKey {
     }
 
     #[cfg(test)]
-    pub(crate) fn version_mac(&self) -> &[u8] {
+    pub(crate) fn version_mac(&self) -> &CtOutput<Hmac<Sha256>> {
         &self.version_mac
     }
 
@@ -170,7 +189,7 @@ impl WrappedKey {
             scrypt_block_size: self.scrypt_params.r(),
             primary_master_key: Base64::encode_string(&self.enc_key),
             hmac_master_key: Base64::encode_string(&self.mac_key),
-            version_mac: Base64::encode_string(&self.version_mac),
+            version_mac: Base64::encode_string(&self.version_mac.clone().into_bytes()),
         }
     }
 }
@@ -217,7 +236,7 @@ mod tests {
             "LiBoVDJthshFhm1Q+T3de2Ynpfb5Yx63KrRyjqSGBNp3gyFznhjnNQ=="
         );
         assert_eq!(
-            Base64::encode_string(wrapped_key.version_mac()),
+            Base64::encode_string(&wrapped_key.version_mac().clone().into_bytes()),
             "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
         );
 

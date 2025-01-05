@@ -150,12 +150,6 @@ impl WrappedKey {
         })
     }
 
-    // TODO: We should probably verify against this when opening a vault
-    #[cfg(test)]
-    pub(crate) fn version_mac(&self) -> &CtOutput<Hmac<Sha256>> {
-        &self.version_mac
-    }
-
     fn as_raw(&self) -> RawWrappedKey {
         RawWrappedKey {
             version: 999,
@@ -212,7 +206,7 @@ mod tests {
             "LiBoVDJthshFhm1Q+T3de2Ynpfb5Yx63KrRyjqSGBNp3gyFznhjnNQ=="
         );
         assert_eq!(
-            Base64::encode_string(&wrapped_key.version_mac().clone().into_bytes()),
+            Base64::encode_string(&wrapped_key.version_mac.clone().into_bytes()),
             "P7wUK1BElZEaHemyhC7j4WWdxOrwb6d+5SSdjVAICmA="
         );
 

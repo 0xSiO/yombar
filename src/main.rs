@@ -99,6 +99,10 @@ fn main() -> Result<()> {
             use fuser::MountOption;
             use yombar::fs::fuse::FuseFileSystem;
 
+            if !vault_path.exists() {
+                bail!("failed to find vault at provided path");
+            }
+
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
 
@@ -127,6 +131,10 @@ fn main() -> Result<()> {
             use axum::routing::any;
             use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
             use yombar::fs::webdav::WebDavFileSystem;
+
+            if !vault_path.exists() {
+                bail!("failed to find vault at provided path");
+            }
 
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
@@ -159,6 +167,10 @@ fn main() -> Result<()> {
             });
         }
         Command::Translate { vault_path, path } => {
+            if !vault_path.exists() {
+                bail!("failed to find vault at provided path");
+            }
+
             let password = rpassword::prompt_password("Password: ")?;
             let vault = Vault::open(&vault_path, password)?;
             let translator = Translator::new(&vault);

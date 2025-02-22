@@ -1,11 +1,11 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use aes_siv::siv::Aes256Siv;
+use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use rand::Rng;
-use ring::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
@@ -37,7 +37,7 @@ impl<'k> Cryptor<'k> {
         Self { key }
     }
 
-    // TODO: Use AES-GCM from ring until https://github.com/RustCrypto/AEADs/issues/74 is resolved
+    // TODO: Use AES-GCM from aws-lc-rs until https://github.com/RustCrypto/AEADs/issues/74 is resolved
     fn aes_gcm_encrypt(
         &self,
         plaintext: &[u8],
@@ -54,7 +54,7 @@ impl<'k> Cryptor<'k> {
         Ok((buffer, tag))
     }
 
-    // TODO: Use AES-GCM from ring until https://github.com/RustCrypto/AEADs/issues/74 is resolved
+    // TODO: Use AES-GCM from aws-lc-rs until https://github.com/RustCrypto/AEADs/issues/74 is resolved
     fn aes_gcm_decrypt(
         &self,
         ciphertext: &[u8],
@@ -66,9 +66,8 @@ impl<'k> Cryptor<'k> {
         let key = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, key)?);
         let nonce = Nonce::assume_unique_for_key(*nonce);
         let aad = Aad::from(associated_data);
-        let tag = Tag::from(*tag);
         let mut buffer = ciphertext.to_vec();
-        key.open_in_place_separate_tag(nonce, aad, tag, &mut buffer, 0..)?;
+        key.open_separate_gather(nonce, aad, ciphertext, tag, &mut buffer)?;
 
         Ok(buffer)
     }

@@ -59,7 +59,7 @@ impl DavDirEntry for WebDavDirEntry {
         self.name.as_encoded_bytes().to_vec()
     }
 
-    fn metadata(&self) -> FsFuture<Box<dyn DavMetaData>> {
+    fn metadata(&self) -> FsFuture<'_, Box<dyn DavMetaData>> {
         Box::pin(async move { Ok(Box::new(self.dir_entry.clone()) as _) })
     }
 }
@@ -71,25 +71,25 @@ struct WebDavFile<'k> {
 }
 
 impl DavFile for WebDavFile<'_> {
-    fn metadata(&mut self) -> FsFuture<Box<dyn DavMetaData>> {
+    fn metadata(&mut self) -> FsFuture<'_, Box<dyn DavMetaData>> {
         Box::pin(async move { Ok(Box::new(self.dir_entry.clone()) as _) })
     }
 
-    fn write_buf(&mut self, buf: Box<dyn Buf + Send>) -> FsFuture<()> {
+    fn write_buf(&mut self, buf: Box<dyn Buf + Send>) -> FsFuture<'_, ()> {
         Box::pin(async move {
             self.encrypted_file.write_all(buf.chunk()).unwrap();
             Ok(())
         })
     }
 
-    fn write_bytes(&mut self, buf: Bytes) -> FsFuture<()> {
+    fn write_bytes(&mut self, buf: Bytes) -> FsFuture<'_, ()> {
         Box::pin(async move {
             self.encrypted_file.write_all(&buf).unwrap();
             Ok(())
         })
     }
 
-    fn read_bytes(&mut self, count: usize) -> FsFuture<Bytes> {
+    fn read_bytes(&mut self, count: usize) -> FsFuture<'_, Bytes> {
         Box::pin(async move {
             let mut buf = BytesMut::zeroed(count);
             self.encrypted_file.read_exact(&mut buf).unwrap();
@@ -97,14 +97,14 @@ impl DavFile for WebDavFile<'_> {
         })
     }
 
-    fn seek(&mut self, pos: SeekFrom) -> FsFuture<u64> {
+    fn seek(&mut self, pos: SeekFrom) -> FsFuture<'_, u64> {
         Box::pin(async move {
             let pos = self.encrypted_file.seek(pos).unwrap();
             Ok(pos)
         })
     }
 
-    fn flush(&mut self) -> FsFuture<()> {
+    fn flush(&mut self) -> FsFuture<'_, ()> {
         Box::pin(async move {
             self.encrypted_file.flush().unwrap();
             Ok(())

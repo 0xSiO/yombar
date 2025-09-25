@@ -141,7 +141,7 @@ impl Vault {
         &self.config
     }
 
-    pub fn cryptor(&self) -> Cryptor {
+    pub fn cryptor(&'_ self) -> Cryptor<'_> {
         match self.config().claims.cipher_combo {
             CipherCombo::SivCtrMac => {
                 Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(&self.master_key))

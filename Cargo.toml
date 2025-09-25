@@ -15,8 +15,8 @@ aes = { version = "0.8", features = ["zeroize"] }
 aes-kw = { version = "0.2", features = ["std"] }
 aes-siv = { version = "0.7", features = ["std"] }
 aws-lc-rs = { version = "1" }
-base32ct = { version = "0.2", features = ["std"] }
-base64ct = { version = "1", features = ["std"] }
+base32ct = { version = "0.3", features = ["alloc"] }
+base64ct = { version = "1", features = ["alloc"] }
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
@@ -47,7 +47,7 @@ futures-util = { version = "0.3", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
-fuser = { version = "0.15", features = ["abi-7-31"] }
+fuser = { version = "0.16", features = ["abi-7-40"] }
 
 # TODO: Maybe implement a WinFSP backend
 # [target.'cfg(target_os = "windows")'.dependencies]

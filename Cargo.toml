@@ -23,7 +23,7 @@ color-eyre = "0.6"
 ctr = { version = "0.9", features = ["std", "zeroize"] }
 fd-lock = "4"
 hmac = { version = "0.12", features = ["std"] }
-jsonwebtoken = { version = "9", default-features = false }
+jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }
 libc = "0.2"
 rand = "0.8"
 rpassword = "7"

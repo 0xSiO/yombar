@@ -80,7 +80,7 @@ impl MasterKey {
         )?)
     }
 
-    pub(crate) fn verify_jwt<T: DeserializeOwned>(
+    pub(crate) fn verify_jwt<T: DeserializeOwned + Clone>(
         &self,
         token: String,
         validation: Validation,

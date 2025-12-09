@@ -10,6 +10,7 @@ use uuid::Uuid;
 use yombar::{
     crypto::FileCryptor,
     fs::EncryptedFile,
+    util::SecretString,
     vault::{CipherCombo, Vault, VaultConfig},
 };
 
@@ -18,7 +19,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     // Check vault import
     let vault = Vault::open(
         "tests/fixtures/vault_v8_siv_ctrmac",
-        String::from("password"),
+        SecretString::from(String::from("password")),
     )?;
 
     assert_eq!(
@@ -193,7 +194,10 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 #[test]
 pub fn siv_gcm_basic() -> yombar::Result<()> {
     // Check vault import
-    let vault = Vault::open("tests/fixtures/vault_v8_siv_gcm", String::from("password"))?;
+    let vault = Vault::open(
+        "tests/fixtures/vault_v8_siv_gcm",
+        SecretString::from(String::from("password")),
+    )?;
 
     assert_eq!(
         vault.path(),

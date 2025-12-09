@@ -583,17 +583,22 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::time::UNIX_EPOCH;
 
+    use crate::util::SecretString;
+
     use super::*;
 
     fn get_vault_siv_ctrmac() -> Result<Vault> {
         Vault::open(
             "tests/fixtures/vault_v8_siv_ctrmac",
-            String::from("password"),
+            SecretString::from(String::from("password")),
         )
     }
 
     fn get_vault_siv_gcm() -> Result<Vault> {
-        Vault::open("tests/fixtures/vault_v8_siv_gcm", String::from("password"))
+        Vault::open(
+            "tests/fixtures/vault_v8_siv_gcm",
+            SecretString::from(String::from("password")),
+        )
     }
 
     fn rename_test_helper(

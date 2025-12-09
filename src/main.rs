@@ -41,15 +41,15 @@ pub enum Command {
         #[arg(short, long)]
         read_only: bool,
     },
-    /// Serve a vault from a local WebDAV server
-    #[cfg(feature = "webdav")]
-    Serve {
-        /// Path to encrypted vault directory
-        vault_path: PathBuf,
-        /// Only allow read-only HTTP methods
-        #[arg(short, long)]
-        read_only: bool,
-    },
+    // /// Serve a vault from a local WebDAV server
+    // #[cfg(feature = "webdav")]
+    // Serve {
+    //     /// Path to encrypted vault directory
+    //     vault_path: PathBuf,
+    //     /// Only allow read-only HTTP methods
+    //     #[arg(short, long)]
+    //     read_only: bool,
+    // },
     /// Translate between cleartext paths and encrypted paths
     Translate {
         /// Path to encrypted vault directory
@@ -127,49 +127,49 @@ fn main() -> Result<()> {
                 &mount_options,
             )?;
         }
-        #[cfg(feature = "webdav")]
-        Command::Serve {
-            vault_path,
-            read_only,
-        } => {
-            use axum::routing::any;
-            use dav_server::{DavHandler, DavMethodSet, memls::MemLs};
-            use yombar::fs::webdav::WebDavFileSystem;
-
-            if !vault_path.exists() {
-                bail!("failed to find vault at provided path");
-            }
-
-            let password = rpassword::prompt_password("Password: ")?;
-            let vault = Vault::open(&vault_path, password)?;
-
-            let vault: &'static Vault = Box::leak(Box::new(vault));
-            let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
-            let permitted_methods = if read_only {
-                DavMethodSet::WEBDAV_RO
-            } else {
-                DavMethodSet::WEBDAV_RW
-            };
-
-            let webdav_server = DavHandler::builder()
-                .methods(permitted_methods)
-                .filesystem(Box::new(webdav_fs))
-                .locksystem(MemLs::new())
-                .build_handler();
-
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(async move {
-                let listener = tokio::net::TcpListener::bind("0.0.0.0:4918").await.unwrap();
-
-                tracing::info!(addr = %listener.local_addr().unwrap(), "starting WebDAV server");
-                axum::serve(
-                    listener,
-                    any(|req| async move { webdav_server.handle(req).await }),
-                )
-                .await
-                .unwrap();
-            });
-        }
+        // #[cfg(feature = "webdav")]
+        // Command::Serve {
+        //     vault_path,
+        //     read_only,
+        // } => {
+        //     use axum::routing::any;
+        //     use dav_server::{DavHandler, DavMethodSet, memls::MemLs};
+        //     use yombar::fs::webdav::WebDavFileSystem;
+        //
+        //     if !vault_path.exists() {
+        //         bail!("failed to find vault at provided path");
+        //     }
+        //
+        //     let password = rpassword::prompt_password("Password: ")?;
+        //     let vault = Vault::open(&vault_path, password)?;
+        //
+        //     let vault: &'static Vault = Box::leak(Box::new(vault));
+        //     let webdav_fs = WebDavFileSystem::new(EncryptedFileSystem::new(vault));
+        //     let permitted_methods = if read_only {
+        //         DavMethodSet::WEBDAV_RO
+        //     } else {
+        //         DavMethodSet::WEBDAV_RW
+        //     };
+        //
+        //     let webdav_server = DavHandler::builder()
+        //         .methods(permitted_methods)
+        //         .filesystem(Box::new(webdav_fs))
+        //         .locksystem(MemLs::new())
+        //         .build_handler();
+        //
+        //     let rt = tokio::runtime::Runtime::new()?;
+        //     rt.block_on(async move {
+        //         let listener = tokio::net::TcpListener::bind("0.0.0.0:4918").await.unwrap();
+        //
+        //         tracing::info!(addr = %listener.local_addr().unwrap(), "starting WebDAV server");
+        //         axum::serve(
+        //             listener,
+        //             any(|req| async move { webdav_server.handle(req).await }),
+        //         )
+        //         .await
+        //         .unwrap();
+        //     });
+        // }
         Command::Translate { vault_path, path } => {
             if !vault_path.exists() {
                 bail!("failed to find vault at provided path");

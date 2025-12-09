@@ -1,13 +1,14 @@
 use std::io::{self, Read};
 
-use aes_kw::{Kek, KekAes256};
+use aes::Aes256;
+use aes_kw::Kek;
 use hmac::{digest::CtOutput, Hmac, Mac};
 use scrypt::{
     password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
 };
+use secrets::{Secret, SecretVec};
 use sha2::Sha256;
-use zeroize::Zeroize;
 
 use crate::{
     crypto::{Cryptor, FileCryptor},
@@ -15,22 +16,37 @@ use crate::{
     Result,
 };
 
-pub(crate) fn derive_kek(mut password: String, params: Params, salt: Salt) -> Result<KekAes256> {
-    let password_hash =
-        Scrypt.hash_password_customized(password.as_bytes(), None, None, params, salt)?;
-    // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
-    let hash = password_hash.hash.unwrap();
+pub struct SecretString {
+    bytes: SecretVec<u8>,
+}
 
-    password.zeroize();
-    debug_assert_eq!(hash.len(), SUBKEY_LEN);
+impl From<String> for SecretString {
+    fn from(mut value: String) -> Self {
+        Self {
+            // Safety: The unprotected memory holding the string is immediately zeroed once
+            // copied into the SecretVec and is not used afterward.
+            bytes: SecretVec::from(unsafe { value.as_bytes_mut() }),
+        }
+    }
+}
 
-    let mut kek_bytes = [0_u8; SUBKEY_LEN];
-    kek_bytes.copy_from_slice(hash.as_bytes());
-    Ok(Kek::from(kek_bytes))
+pub(crate) fn derive_kek(
+    password: SecretString,
+    params: Params,
+    salt: Salt,
+) -> Result<Kek<Aes256>> {
+    let mut password_hash =
+        Scrypt.hash_password_customized(&password.bytes.borrow(), None, None, params, salt)?;
+
+    Secret::<[u8; SUBKEY_LEN]>::new(|mut s| {
+        // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
+        s.copy_from_slice(password_hash.hash.take().unwrap().as_bytes());
+        Ok(Kek::from(*s))
+    })
 }
 
 pub(crate) fn hmac(key: &MasterKey, data: &[u8]) -> CtOutput<Hmac<Sha256>> {
-    Hmac::<Sha256>::new_from_slice(key.mac_key())
+    Hmac::<Sha256>::new_from_slice(&key.mac_key())
         .expect("HMAC can take keys of any size")
         .chain_update(data)
         .finalize()
@@ -87,7 +103,7 @@ mod tests {
 
     #[test]
     fn kek_derivation_test() {
-        let password = String::from("this is a test password");
+        let password = SecretString::from(String::from("this is a test password"));
         let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
         let params = Params::new(6, 8, 1, SUBKEY_LEN).unwrap();
         let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();

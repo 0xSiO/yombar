@@ -11,6 +11,7 @@ use color_eyre::eyre::bail;
 use ctr::Ctr128BE;
 use hmac::digest::CtOutput;
 use rand::Rng;
+use secrets::{Secret, SecretBox};
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
@@ -56,19 +57,21 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key, but in reverse order
-        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
-
-        Ok(Aes256Siv::new(key.as_flattened().into()).encrypt(associated_data, plaintext)?)
+        Secret::<[[u8; SUBKEY_LEN]; 2]>::new(|mut key| {
+            // AES-SIV takes both the encryption key and mac key, but in reverse order
+            *key = [self.key.mac_key(), self.key.enc_key()];
+            Ok(Aes256Siv::new(key.as_flattened().into()).encrypt(associated_data, plaintext)?)
+        })
     }
 
     fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key, but in reverse order
-        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
-
-        Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
+        Secret::<[[u8; SUBKEY_LEN]; 2]>::new(|mut key| {
+            // AES-SIV takes both the encryption key and mac key, but in reverse order
+            *key = [self.key.mac_key(), self.key.enc_key()];
+            Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
+        })
     }
 
     fn encrypt_chunk_with_nonce(
@@ -80,7 +83,7 @@ impl<'k> Cryptor<'k> {
     ) -> Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(NONCE_LEN + chunk.len() + MAC_LEN);
         buffer.extend(nonce);
-        buffer.extend(self.aes_ctr(chunk, header.content_key(), nonce)?);
+        buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
         buffer.extend(
             util::hmac(
                 self.key,
@@ -120,7 +123,7 @@ impl FileCryptor for Cryptor<'_> {
 
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         buffer.extend(nonce);
-        buffer.extend(self.aes_ctr(&header.payload, self.key.enc_key(), nonce)?);
+        buffer.extend(self.aes_ctr(&*header.payload.borrow(), &self.key.enc_key(), nonce)?);
         buffer.extend(util::hmac(self.key, &buffer).into_bytes());
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
@@ -150,11 +153,11 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         // Next, decrypt the payload
-        let payload = self.aes_ctr(enc_payload, self.key.enc_key(), nonce)?;
+        let mut payload = self.aes_ctr(enc_payload, &self.key.enc_key(), nonce)?;
 
         Ok(FileHeader {
             nonce: nonce.to_vec(),
-            payload: *payload.first_chunk::<HEADER_PAYLOAD_LEN>().unwrap(),
+            payload: SecretBox::from(payload.first_chunk_mut::<HEADER_PAYLOAD_LEN>().unwrap()),
         })
     }
 
@@ -207,7 +210,7 @@ impl FileCryptor for Cryptor<'_> {
             bail!("failed to verify chunk MAC");
         }
 
-        self.aes_ctr(chunk, header.content_key(), nonce)
+        self.aes_ctr(chunk, &header.content_key(), nonce)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
@@ -259,7 +262,7 @@ mod tests {
         let cryptor = Cryptor::new(&key);
         let header = FileHeader {
             nonce: vec![19; NONCE_LEN],
-            payload: [23; HEADER_PAYLOAD_LEN],
+            payload: SecretBox::from(&mut [23; HEADER_PAYLOAD_LEN]),
         };
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

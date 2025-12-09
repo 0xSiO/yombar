@@ -6,6 +6,7 @@ use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
 use rand::Rng;
+use secrets::{Secret, SecretBox};
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
@@ -75,19 +76,21 @@ impl<'k> Cryptor<'k> {
     fn aes_siv_encrypt(&self, plaintext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key, but in reverse order
-        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
-
-        Ok(Aes256Siv::new(key.as_flattened().into()).encrypt(associated_data, plaintext)?)
+        Secret::<[[u8; SUBKEY_LEN]; 2]>::new(|mut key| {
+            // AES-SIV takes both the encryption key and mac key, but in reverse order
+            *key = [self.key.mac_key(), self.key.enc_key()];
+            Ok(Aes256Siv::new(key.as_flattened().into()).encrypt(associated_data, plaintext)?)
+        })
     }
 
     fn aes_siv_decrypt(&self, ciphertext: &[u8], associated_data: &[&[u8]]) -> Result<Vec<u8>> {
         use aes_siv::KeyInit;
 
-        // AES-SIV takes both the encryption key and mac key, but in reverse order
-        let key: [[u8; SUBKEY_LEN]; 2] = [*self.key.mac_key(), *self.key.enc_key()];
-
-        Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
+        Secret::<[[u8; SUBKEY_LEN]; 2]>::new(|mut key| {
+            // AES-SIV takes both the encryption key and mac key, but in reverse order
+            *key = [self.key.mac_key(), self.key.enc_key()];
+            Ok(Aes256Siv::new(key.as_flattened().into()).decrypt(associated_data, ciphertext)?)
+        })
     }
 
     fn encrypt_chunk_with_nonce(
@@ -102,7 +105,7 @@ impl<'k> Cryptor<'k> {
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
         let (ciphertext, tag) =
-            self.aes_gcm_encrypt(chunk, header.content_key(), nonce, &associated_data)?;
+            self.aes_gcm_encrypt(chunk, &header.content_key(), nonce, &associated_data)?;
 
         buffer.extend(nonce);
         buffer.extend(ciphertext);
@@ -139,7 +142,7 @@ impl FileCryptor for Cryptor<'_> {
 
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         let (ciphertext, tag) =
-            self.aes_gcm_encrypt(&header.payload, self.key.enc_key(), nonce, &[])?;
+            self.aes_gcm_encrypt(&*header.payload.borrow(), &self.key.enc_key(), nonce, &[])?;
 
         buffer.extend(nonce);
         buffer.extend(ciphertext);
@@ -161,11 +164,12 @@ impl FileCryptor for Cryptor<'_> {
         let (enc_payload, rest) = rest.split_first_chunk::<HEADER_PAYLOAD_LEN>().unwrap();
         let tag = rest.first_chunk::<TAG_LEN>().unwrap();
 
-        let payload = self.aes_gcm_decrypt(enc_payload, self.key.enc_key(), nonce, &[], tag)?;
+        let mut payload =
+            self.aes_gcm_decrypt(enc_payload, &self.key.enc_key(), nonce, &[], tag)?;
 
         Ok(FileHeader {
             nonce: nonce.to_vec(),
-            payload: *payload.first_chunk::<HEADER_PAYLOAD_LEN>().unwrap(),
+            payload: SecretBox::from(payload.first_chunk_mut::<HEADER_PAYLOAD_LEN>().unwrap()),
         })
     }
 
@@ -205,7 +209,7 @@ impl FileCryptor for Cryptor<'_> {
         let mut associated_data = chunk_number.to_be_bytes().to_vec();
         associated_data.extend(&header.nonce);
 
-        self.aes_gcm_decrypt(chunk, header.content_key(), nonce, &associated_data, tag)
+        self.aes_gcm_decrypt(chunk, &header.content_key(), nonce, &associated_data, tag)
     }
 
     fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
@@ -257,7 +261,7 @@ mod tests {
         let cryptor = Cryptor::new(&key);
         let header = FileHeader {
             nonce: vec![19; NONCE_LEN],
-            payload: [23; HEADER_PAYLOAD_LEN],
+            payload: SecretBox::from(&mut [23; HEADER_PAYLOAD_LEN]),
         };
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

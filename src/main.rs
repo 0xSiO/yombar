@@ -6,6 +6,7 @@ use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
     fs::{DirEntry, EncryptedFileSystem, FileKind, Translator},
+    util::SecretString,
     vault::Vault,
     Result,
 };
@@ -87,7 +88,7 @@ fn main() -> Result<()> {
 
     match args.cmd {
         Command::Create { vault_path } => {
-            let password = rpassword::prompt_password("Set password: ")?;
+            let password = SecretString::from(rpassword::prompt_password("Set password: ")?);
             Vault::create(vault_path, password)?;
         }
         #[cfg(unix)]
@@ -103,7 +104,7 @@ fn main() -> Result<()> {
                 bail!("failed to find vault at provided path");
             }
 
-            let password = rpassword::prompt_password("Password: ")?;
+            let password = SecretString::from(rpassword::prompt_password("Password: ")?);
             let vault = Vault::open(&vault_path, password)?;
 
             let mut mount_options = vec![
@@ -171,7 +172,7 @@ fn main() -> Result<()> {
                 bail!("failed to find vault at provided path");
             }
 
-            let password = rpassword::prompt_password("Password: ")?;
+            let password = SecretString::from(rpassword::prompt_password("Password: ")?);
             let vault = Vault::open(&vault_path, password)?;
             let translator = Translator::new(&vault);
 

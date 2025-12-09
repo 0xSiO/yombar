@@ -17,7 +17,8 @@ use crate::{
     crypto::{siv_ctrmac, siv_gcm, Cryptor},
     fs::{EncryptedFile, EncryptedFileSystem},
     key::{MasterKey, WrappedKey},
-    util, Result,
+    util::{self, SecretString},
+    Result,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,12 +49,7 @@ pub struct Vault {
 
 impl Vault {
     // TODO: Maybe make creation options more configurable
-    pub fn create(path: impl AsRef<Path>, password: String) -> Result<Self> {
-        let params = Params::recommended();
-        let salt_string = SaltString::generate(rand::thread_rng());
-        let kek = util::derive_kek(password, params, salt_string.as_salt())?;
-        let master_key = MasterKey::new()?;
-
+    pub fn create(path: impl AsRef<Path>, password: SecretString) -> Result<Self> {
         let mut header = Header::new(Algorithm::HS256);
         header.kid = Some(String::from("masterkeyfile:masterkey.cryptomator"));
         let claims = VaultConfig {
@@ -63,8 +59,13 @@ impl Vault {
             cipher_combo: CipherCombo::SivGcm,
         };
 
+        let master_key = MasterKey::new()?;
         let config_jwt = master_key.sign_jwt(header.clone(), claims)?;
+        let params = Params::recommended();
+        let salt_string = SaltString::generate(rand::thread_rng());
+        let kek = util::derive_kek(password, params, salt_string.as_salt())?;
         let wrapped_key = master_key.wrap(&kek, params, salt_string)?;
+        drop(kek);
 
         fs::create_dir_all(path.as_ref())?;
         let path = path.as_ref().canonicalize()?;
@@ -93,7 +94,7 @@ impl Vault {
     // 2. Load the wrapped master key and grab the scrypt parameters
     // 3. Derive a KEK with the password and scrypt parameters
     // 4. Use the KEK to unwrap the master key and decode/verify the config JWT
-    pub fn open(config_dir: impl AsRef<Path>, password: String) -> Result<Self> {
+    pub fn open(config_dir: impl AsRef<Path>, password: SecretString) -> Result<Self> {
         let config_dir = config_dir.as_ref().canonicalize()?;
         let jwt = fs::read_to_string(config_dir.join("vault.cryptomator"))?;
         let header = jsonwebtoken::decode_header(&jwt)?;

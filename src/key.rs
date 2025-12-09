@@ -5,11 +5,10 @@ use base64ct::{Base64, Encoding};
 use color_eyre::eyre::OptionExt;
 use hmac::{digest::CtOutput, Hmac};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
-use rand::Rng;
 use scrypt::{password_hash::SaltString, Params};
+use secrets::{Secret, SecretBox};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::Sha256;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{util, Result};
 
@@ -17,28 +16,28 @@ pub(crate) const SUBKEY_LEN: usize = 32;
 const ENCRYPTED_SUBKEY_LEN: usize = SUBKEY_LEN + 8;
 const MAC_LEN: usize = 32;
 
-#[derive(PartialEq, Eq, Clone, Zeroize, ZeroizeOnDrop)]
-pub struct MasterKey([u8; SUBKEY_LEN * 2]);
+#[derive(PartialEq, Eq, Clone)]
+pub struct MasterKey(SecretBox<[u8; SUBKEY_LEN * 2]>);
 
 impl MasterKey {
     pub fn new() -> Result<Self> {
-        let mut key = Self([0_u8; SUBKEY_LEN * 2]);
-        rand::thread_rng().try_fill(&mut key.0)?;
-        Ok(key)
+        Ok(Self(SecretBox::random()))
     }
 
     /// Create a [`MasterKey`] from the provided byte array. For testing purposes only.
     #[cfg(test)]
-    pub(crate) fn from_bytes(bytes: [u8; SUBKEY_LEN * 2]) -> Self {
-        MasterKey(bytes)
+    pub(crate) fn from_bytes(mut bytes: [u8; SUBKEY_LEN * 2]) -> Self {
+        MasterKey(SecretBox::from(&mut bytes))
     }
 
-    pub(crate) fn enc_key(&self) -> &[u8; SUBKEY_LEN] {
-        self.0.first_chunk::<SUBKEY_LEN>().unwrap()
+    /// Master encryption key. Avoid storing this where possible.
+    pub(crate) fn enc_key(&self) -> [u8; SUBKEY_LEN] {
+        *self.0.borrow().first_chunk::<SUBKEY_LEN>().unwrap()
     }
 
-    pub(crate) fn mac_key(&self) -> &[u8; SUBKEY_LEN] {
-        self.0.last_chunk::<SUBKEY_LEN>().unwrap()
+    /// Master MAC key. Avoid storing this where possible.
+    pub(crate) fn mac_key(&self) -> [u8; SUBKEY_LEN] {
+        *self.0.borrow().last_chunk::<SUBKEY_LEN>().unwrap()
     }
 
     pub(crate) fn wrap(
@@ -50,8 +49,8 @@ impl MasterKey {
         let mut wrapped_enc_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
         let mut wrapped_mac_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
 
-        key_encryption_key.wrap(self.enc_key(), &mut wrapped_enc_master_key)?;
-        key_encryption_key.wrap(self.mac_key(), &mut wrapped_mac_master_key)?;
+        key_encryption_key.wrap(&self.enc_key(), &mut wrapped_enc_master_key)?;
+        key_encryption_key.wrap(&self.mac_key(), &mut wrapped_mac_master_key)?;
 
         Ok(WrappedKey {
             scrypt_salt,
@@ -66,17 +65,18 @@ impl MasterKey {
         wrapped_key: &WrappedKey,
         key_encryption_key: &KekAes256,
     ) -> Result<Self> {
-        let mut buffer = [0_u8; SUBKEY_LEN * 2];
-        key_encryption_key.unwrap(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
-        key_encryption_key.unwrap(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
-        Ok(MasterKey(buffer))
+        Secret::<[u8; SUBKEY_LEN * 2]>::zero(|mut buffer| {
+            key_encryption_key.unwrap(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
+            key_encryption_key.unwrap(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
+            Ok(MasterKey(SecretBox::from(&mut *buffer)))
+        })
     }
 
     pub(crate) fn sign_jwt(&self, header: Header, claims: impl Serialize) -> Result<String> {
         Ok(jsonwebtoken::encode(
             &header,
             &claims,
-            &EncodingKey::from_secret(&self.0),
+            &EncodingKey::from_secret(&*self.0.borrow()),
         )?)
     }
 
@@ -87,7 +87,7 @@ impl MasterKey {
     ) -> Result<TokenData<T>> {
         Ok(jsonwebtoken::decode(
             &token,
-            &DecodingKey::from_secret(&self.0),
+            &DecodingKey::from_secret(&*self.0.borrow()),
             &validation,
         )?)
     }
@@ -179,15 +179,18 @@ mod tests {
     use jsonwebtoken::Algorithm;
     use serde::Deserialize;
 
-    use crate::util;
+    use crate::util::{self, SecretString};
 
     use super::*;
 
     #[test]
     fn wrap_and_unwrap_test() {
-        let key_bytes = [[10; SUBKEY_LEN], [20; SUBKEY_LEN]].concat();
-        let key = MasterKey(key_bytes.try_into().unwrap());
-        let password = String::from("this is a test password");
+        let key_bytes = [[10; SUBKEY_LEN], [20; SUBKEY_LEN]]
+            .as_flattened()
+            .try_into()
+            .unwrap();
+        let key = MasterKey::from_bytes(key_bytes);
+        let password = SecretString::from(String::from("this is a test password"));
         let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
         let salt_string = SaltString::encode_b64(b"test salt").unwrap();
         let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
@@ -222,8 +225,11 @@ mod tests {
 
     #[test]
     fn sign_and_verify_jwt_test() {
-        let key_bytes = [[30; SUBKEY_LEN], [40; SUBKEY_LEN]].concat();
-        let key = MasterKey(key_bytes.try_into().unwrap());
+        let key_bytes = [[30; SUBKEY_LEN], [40; SUBKEY_LEN]]
+            .as_flattened()
+            .try_into()
+            .unwrap();
+        let key = MasterKey::from_bytes(key_bytes);
 
         let header = Header::new(Algorithm::HS256);
         let claims = ExampleClaims {

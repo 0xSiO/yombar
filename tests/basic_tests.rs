@@ -63,7 +63,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check file header encryption/decryption
     let ciphertext = std::fs::read(
-        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r"
+        "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r",
     )?;
 
     assert_eq!(
@@ -123,7 +123,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r",
-        File::options().read(true).clone()
+        File::options().read(true).clone(),
     )?;
 
     let mut decrypted = String::new();
@@ -134,7 +134,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/lTrI2Jfu-YkLpHmfu_OZPge73NerWUK5wjFewa8E.c9r",
-        File::options().read(true).clone()
+        File::options().read(true).clone(),
     )?;
 
     let mut decrypted = Vec::new();
@@ -301,7 +301,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=.c9r",
-        File::options().read(true).clone()
+        File::options().read(true).clone(),
     )?;
 
     let mut decrypted = String::new();
@@ -312,7 +312,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     let mut file = EncryptedFile::open(
         cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/WQ6sflYGPWPHJubj3F4ZMYwhKraEQUCV42gL11XA.c9r",
-        File::options().read(true).clone()
+        File::options().read(true).clone(),
     )?;
 
     let mut decrypted = Vec::new();

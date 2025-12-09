@@ -9,8 +9,9 @@ use std::{
 use fd_lock::RwLock;
 
 use crate::{
+    Result,
     crypto::{Cryptor, FileCryptor, FileHeader},
-    util, Result,
+    util,
 };
 
 #[derive(Debug)]

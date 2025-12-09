@@ -3,14 +3,14 @@ use std::{fmt::Debug, fs, path::Path};
 use aes_kw::KekAes256;
 use base64ct::{Base64, Encoding};
 use color_eyre::eyre::OptionExt;
-use hmac::{digest::CtOutput, Hmac};
+use hmac::{Hmac, digest::CtOutput};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
-use scrypt::{password_hash::SaltString, Params};
+use scrypt::{Params, password_hash::SaltString};
 use secrets::{Secret, SecretBox};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::Sha256;
 
-use crate::{util, Result};
+use crate::{Result, util};
 
 pub(crate) const SUBKEY_LEN: usize = 32;
 const ENCRYPTED_SUBKEY_LEN: usize = SUBKEY_LEN + 8;
@@ -65,7 +65,7 @@ impl MasterKey {
         wrapped_key: &WrappedKey,
         key_encryption_key: &KekAes256,
     ) -> Result<Self> {
-        Secret::<[u8; SUBKEY_LEN * 2]>::zero(|mut buffer| {
+        Secret::<[u8; SUBKEY_LEN * 2]>::new(|mut buffer| {
             key_encryption_key.unwrap(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
             key_encryption_key.unwrap(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
             Ok(MasterKey(SecretBox::from(&mut *buffer)))

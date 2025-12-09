@@ -5,10 +5,10 @@ use color_eyre::eyre::bail;
 use tracing::instrument;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yombar::{
+    Result,
     fs::{DirEntry, EncryptedFileSystem, FileKind, Translator},
     util::SecretString,
     vault::Vault,
-    Result,
 };
 
 #[derive(Debug, Parser)]
@@ -64,14 +64,17 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let args = Args::parse();
-    env::set_var(
-        "RUST_LOG",
-        match args.verbose {
-            0 => "info",
-            1 => "debug",
-            _ => "trace",
-        },
-    );
+    // Safety: std::env::set_var is safe to call in a single-threaded program.
+    unsafe {
+        env::set_var(
+            "RUST_LOG",
+            match args.verbose {
+                0 => "info",
+                1 => "debug",
+                _ => "trace",
+            },
+        );
+    }
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -130,7 +133,7 @@ fn main() -> Result<()> {
             read_only,
         } => {
             use axum::routing::any;
-            use dav_server::{memls::MemLs, DavHandler, DavMethodSet};
+            use dav_server::{DavHandler, DavMethodSet, memls::MemLs};
             use yombar::fs::webdav::WebDavFileSystem;
 
             if !vault_path.exists() {

@@ -172,11 +172,11 @@ impl Filesystem for FuseFileSystem<'_> {
         reply: fuser::ReplyAttr,
     ) {
         if let Some(path) = self.tree.get_path(ino) {
-            if let Some(mode) = mode {
-                if let Err(err) = self.fs.set_permissions(&path, Permissions::from_mode(mode)) {
-                    tracing::error!("{err:?}");
-                    return reply.error(libc::EIO);
-                }
+            if let Some(mode) = mode
+                && let Err(err) = self.fs.set_permissions(&path, Permissions::from_mode(mode))
+            {
+                tracing::error!("{err:?}");
+                return reply.error(libc::EIO);
             }
 
             if let Some(size) = size {

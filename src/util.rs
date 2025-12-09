@@ -2,18 +2,18 @@ use std::io::{self, Read};
 
 use aes::Aes256;
 use aes_kw::Kek;
-use hmac::{digest::CtOutput, Hmac, Mac};
+use hmac::{Hmac, Mac, digest::CtOutput};
 use scrypt::{
-    password_hash::{PasswordHasher, Salt},
     Params, Scrypt,
+    password_hash::{PasswordHasher, Salt},
 };
 use secrets::{Secret, SecretVec};
 use sha2::Sha256;
 
 use crate::{
+    Result,
     crypto::{Cryptor, FileCryptor},
     key::{MasterKey, SUBKEY_LEN},
-    Result,
 };
 
 pub struct SecretString {

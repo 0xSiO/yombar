@@ -1,7 +1,7 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use aes_siv::siv::Aes256Siv;
-use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, Tag, UnboundKey, AES_256_GCM};
+use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, Tag, UnboundKey};
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
@@ -11,8 +11,8 @@ use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-    key::{MasterKey, SUBKEY_LEN},
     Result,
+    key::{MasterKey, SUBKEY_LEN},
 };
 
 use super::{FileCryptor, FileHeader, HEADER_PAYLOAD_LEN};

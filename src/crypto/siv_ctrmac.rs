@@ -1,8 +1,8 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use aes::{
-    cipher::{KeyIvInit, StreamCipher},
     Aes256,
+    cipher::{KeyIvInit, StreamCipher},
 };
 use aes_siv::siv::Aes256Siv;
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
@@ -16,8 +16,9 @@ use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
+    Result,
     key::{MasterKey, SUBKEY_LEN},
-    util, Result,
+    util,
 };
 
 use super::{FileCryptor, FileHeader, HEADER_PAYLOAD_LEN};

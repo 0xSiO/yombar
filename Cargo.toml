@@ -5,7 +5,7 @@ authors = ["Luc Street (@0xSiO)"]
 description = "A simpler, faster, and more lightweight implementation of Cryptomator using Rust."
 repository = "https://github.com/0xSiO/yombar"
 license = "AGPL-3.0"
-edition = "2021"
+edition = "2024"
 
 [features]
 webdav = ["axum", "dav-server", "futures-util", "tokio"]

@@ -10,7 +10,7 @@ use std::{
 use color_eyre::eyre::bail;
 use uuid::Uuid;
 
-use crate::{crypto::FileCryptor, util, vault::Vault, Result};
+use crate::{Result, crypto::FileCryptor, util, vault::Vault};
 
 mod encrypted_file;
 mod translator;
@@ -777,7 +777,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::File
+                FileKind::File,
             )?;
 
             // long -> long
@@ -787,7 +787,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::File
+                FileKind::File,
             )?;
 
             // long -> short
@@ -797,7 +797,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::File
+                FileKind::File,
             )?;
 
             fs.unlink("", name_2)?;
@@ -825,7 +825,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             // long -> long
@@ -835,7 +835,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             // long -> short
@@ -845,7 +845,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             fs.rmdir("", name_2)?;
@@ -873,7 +873,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             // long -> long
@@ -883,7 +883,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             // long -> short
@@ -893,7 +893,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             fs.unlink("", name_2)?;
@@ -1359,7 +1359,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::File
+                FileKind::File,
             )?;
 
             // long -> long
@@ -1369,7 +1369,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::File
+                FileKind::File,
             )?;
 
             // long -> short
@@ -1379,7 +1379,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::File
+                FileKind::File,
             )?;
 
             fs.unlink("", name_2)?;
@@ -1407,7 +1407,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             // long -> long
@@ -1417,7 +1417,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             // long -> short
@@ -1427,7 +1427,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::Directory
+                FileKind::Directory,
             )?;
 
             fs.rmdir("", name_2)?;
@@ -1455,7 +1455,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_2,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             // long -> long
@@ -1465,7 +1465,7 @@ mod tests {
                 name_2,
                 "test_dir/test_dir_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long_name_too_long",
                 name_1,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             // long -> short
@@ -1475,7 +1475,7 @@ mod tests {
                 name_1,
                 "",
                 name_2,
-                FileKind::Symlink
+                FileKind::Symlink,
             )?;
 
             fs.unlink("", name_2)?;

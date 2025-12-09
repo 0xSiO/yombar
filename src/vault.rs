@@ -5,20 +5,20 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{bail, Context, OptionExt},
     Section,
+    eyre::{Context, OptionExt, bail},
 };
 use jsonwebtoken::{Algorithm, Header, TokenData, Validation};
-use scrypt::{password_hash::SaltString, Params};
+use scrypt::{Params, password_hash::SaltString};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    crypto::{siv_ctrmac, siv_gcm, Cryptor},
+    Result,
+    crypto::{Cryptor, siv_ctrmac, siv_gcm},
     fs::{EncryptedFile, EncryptedFileSystem},
     key::{MasterKey, WrappedKey},
     util::{self, SecretString},
-    Result,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +111,7 @@ impl Vault {
             let master_key = MasterKey::from_wrapped(&wrapped_key, &kek)
                 .context("failed to unwrap master key")
                 .suggestion("make sure you're using the correct password")?;
+            drop(kek);
 
             let mut validation = Validation::new(header.alg);
             validation.validate_exp = false;

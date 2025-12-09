@@ -8,7 +8,7 @@ use base64ct::{Base64Url, Encoding};
 use color_eyre::eyre::bail;
 use sha1_checked::{Digest, Sha1};
 
-use crate::{crypto::FileCryptor, vault::Vault, Result};
+use crate::{Result, crypto::FileCryptor, vault::Vault};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Translator<'v> {

@@ -98,20 +98,19 @@ impl DirTree {
     }
 
     pub(crate) fn remove(&mut self, parent: Inode, name: impl AsRef<OsStr>) {
-        if let Some(node) = self.nodes.get_mut(&parent) {
-            if let Some(inode) = node.children.remove(name.as_ref()) {
-                self.nodes.remove(&inode);
-            }
+        if let Some(node) = self.nodes.get_mut(&parent)
+            && let Some(inode) = node.children.remove(name.as_ref())
+        {
+            self.nodes.remove(&inode);
         }
     }
 
     pub(crate) fn forget(&mut self, inode: Inode) {
-        if let Some(node) = self.nodes.remove(&inode) {
-            if let Some(parent) = node.parent {
-                if let Some(parent_node) = self.nodes.get_mut(&parent) {
-                    parent_node.children.remove(&node.name);
-                }
-            }
+        if let Some(node) = self.nodes.remove(&inode)
+            && let Some(parent) = node.parent
+            && let Some(parent_node) = self.nodes.get_mut(&parent)
+        {
+            parent_node.children.remove(&node.name);
         }
     }
 }

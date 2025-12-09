@@ -3,7 +3,7 @@ use std::{ffi::OsStr, path::PathBuf};
 use rand::Rng;
 use secrets::{Secret, SecretBox};
 
-use crate::{key::SUBKEY_LEN, Result};
+use crate::{Result, key::SUBKEY_LEN};
 
 pub mod siv_ctrmac;
 pub mod siv_gcm;

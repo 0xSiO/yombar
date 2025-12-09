@@ -8,7 +8,7 @@ license = "AGPL-3.0"
 edition = "2024"
 
 [features]
-webdav = ["axum", "dav-server", "futures-util", "tokio"]
+# webdav = ["axum", "dav-server", "futures-util", "tokio"]
 
 [dependencies]
 aes = { version = "0.8", features = ["zeroize"] }

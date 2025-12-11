@@ -20,8 +20,8 @@ const MAC_LEN: usize = 32;
 pub struct MasterKey(SecretBox<[u8; SUBKEY_LEN * 2]>);
 
 impl MasterKey {
-    pub fn new() -> Result<Self> {
-        Ok(Self(SecretBox::random()))
+    pub fn new() -> Self {
+        Self(SecretBox::random())
     }
 
     /// Create a [`MasterKey`] from the provided byte array. For testing purposes only.
@@ -90,6 +90,12 @@ impl MasterKey {
             &DecodingKey::from_secret(&*self.0.borrow()),
             &validation,
         )?)
+    }
+}
+
+impl Default for MasterKey {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

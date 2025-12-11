@@ -59,7 +59,7 @@ impl Vault {
             cipher_combo: CipherCombo::SivGcm,
         };
 
-        let master_key = MasterKey::new()?;
+        let master_key = MasterKey::new();
         let config_jwt = master_key.sign_jwt(header.clone(), claims)?;
         let params = Params::recommended();
         let salt_string = SaltString::generate(rand::thread_rng());

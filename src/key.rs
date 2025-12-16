@@ -161,7 +161,7 @@ impl WrappedKey {
             version: 999,
             scrypt_salt: self.scrypt_salt.to_string(),
             // TODO: Use Params::n from https://github.com/RustCrypto/password-hashes/pull/544
-            scrypt_cost_param: 2_u32.pow(self.scrypt_params.log_n() as u32),
+            scrypt_cost_param: 1 << self.scrypt_params.log_n(),
             scrypt_block_size: self.scrypt_params.r(),
             primary_master_key: Base64::encode_string(&self.enc_key),
             hmac_master_key: Base64::encode_string(&self.mac_key),

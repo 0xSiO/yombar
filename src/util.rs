@@ -1,7 +1,6 @@
 use std::io::{self, Read};
 
-use aes::Aes256;
-use aes_kw::Kek;
+use aes_kw::{Kek, KekAes256};
 use hmac::{Hmac, Mac, digest::CtOutput};
 use scrypt::{
     Params, Scrypt,
@@ -30,11 +29,7 @@ impl From<String> for SecretString {
     }
 }
 
-pub(crate) fn derive_kek(
-    password: SecretString,
-    params: Params,
-    salt: Salt,
-) -> Result<Kek<Aes256>> {
+pub(crate) fn derive_kek(password: SecretString, params: Params, salt: Salt) -> Result<KekAes256> {
     let mut password_hash =
         Scrypt.hash_password_customized(&password.bytes.borrow(), None, None, params, salt)?;
 

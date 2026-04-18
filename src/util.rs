@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-use hmac::{Hmac, Mac, digest::CtOutput};
+use hmac::{Hmac, KeyInit, Mac, digest::CtOutput};
 use scrypt::{
     Params, Scrypt,
     password_hash::{PasswordHasher, Salt},

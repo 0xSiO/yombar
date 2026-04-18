@@ -5,7 +5,6 @@ use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, Tag, UnboundKey};
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
-use rand::Rng;
 use secrets::{Secret, SecretBox};
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
@@ -185,7 +184,7 @@ impl FileCryptor for Cryptor<'_> {
         }
 
         let mut nonce = [0_u8; NONCE_LEN];
-        rand::thread_rng().try_fill(&mut nonce)?;
+        rand::fill(&mut nonce);
         self.encrypt_chunk_with_nonce(&nonce, chunk, header, chunk_number)
     }
 

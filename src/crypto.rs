@@ -1,6 +1,5 @@
 use std::{ffi::OsStr, path::PathBuf};
 
-use rand::Rng;
 use secrets::{Secret, SecretBox};
 
 use crate::{Result, key::SUBKEY_LEN};
@@ -20,7 +19,7 @@ pub struct FileHeader {
 impl FileHeader {
     fn new(nonce_len: usize) -> Result<Self> {
         let mut nonce = vec![0_u8; nonce_len];
-        rand::thread_rng().try_fill(nonce.as_mut_slice())?;
+        rand::fill(nonce.as_mut_slice());
 
         Secret::<[u8; HEADER_RESERVED_LEN + SUBKEY_LEN]>::random(|mut s| {
             s.first_chunk_mut::<HEADER_RESERVED_LEN>()

@@ -1,10 +1,7 @@
 use std::io::{self, Read};
 
 use hmac::{Hmac, KeyInit, Mac, digest::CtOutput};
-use scrypt::{
-    Params, Scrypt,
-    password_hash::{PasswordHasher, Salt},
-};
+use scrypt::{Params, Scrypt, password_hash::PasswordHasher, phc::Salt};
 use secrets::SecretVec;
 use sha2::Sha256;
 
@@ -34,8 +31,8 @@ pub(crate) fn derive_kek(
     salt: Salt,
 ) -> Result<KeyEncryptionKey> {
     KeyEncryptionKey::try_new(|s| {
-        let mut password_hash =
-            Scrypt.hash_password_customized(&password.bytes.borrow(), None, None, params, salt)?;
+        let mut password_hash = Scrypt::new_with_params(params)
+            .hash_password_with_salt(&password.bytes.borrow(), &salt)?;
 
         // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
         s.copy_from_slice(password_hash.hash.take().unwrap().as_bytes());
@@ -81,7 +78,7 @@ pub(crate) fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> 
 mod tests {
     use aes_kw::{KeyInit, KwAes256};
     use base64ct::{Base64, Encoding};
-    use scrypt::password_hash::SaltString;
+    use scrypt::phc::Salt;
 
     use super::*;
     use crate::key::SUBKEY_LEN;
@@ -89,24 +86,24 @@ mod tests {
     #[test]
     fn password_hash_test() {
         let password = String::from("the_password");
-        let salt_string = SaltString::encode_b64(b"salty").unwrap();
-        let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
-        let password_hash = Scrypt
-            .hash_password_customized(password.as_bytes(), None, None, params, &salt_string)
+        let salt = Salt::new(b"saltysalt").unwrap();
+        let params = Params::new(4, 8, 1).unwrap();
+        let password_hash = Scrypt::new_with_params(params)
+            .hash_password_with_salt(password.as_bytes(), &salt)
             .unwrap();
 
         assert_eq!(
             Base64::encode_string(password_hash.hash.unwrap().as_bytes()),
-            "VXfqskgJw4XfN0pWQYfD4UlSJsKJ/MqTZNyIh9Vu3v8="
+            "L3GtWl1q0eBnNBUAWkD8zQTlVRk4ly7fVxPyUOS/T2A="
         );
     }
 
     #[test]
     fn kek_derivation_test() {
         let password = SecretString::from(String::from("this is a test password"));
-        let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
-        let params = Params::new(6, 8, 1, SUBKEY_LEN).unwrap();
-        let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();
+        let salt = Salt::new(b"examplesalt").unwrap();
+        let params = Params::new(6, 8, 1).unwrap();
+        let kek = derive_kek(password, params, salt).unwrap();
         let kw = KwAes256::new(&(*kek.borrow()).into());
         let mut wrapped_data = vec![0; 16];
         kw.wrap_key(&[1, 2, 3, 4, 5, 6, 7, 8], &mut wrapped_data)

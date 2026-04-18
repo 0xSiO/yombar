@@ -9,7 +9,7 @@ use color_eyre::{
     eyre::{Context, OptionExt, bail},
 };
 use jsonwebtoken::{Algorithm, Header, TokenData, Validation};
-use scrypt::{Params, password_hash::SaltString};
+use scrypt::{Params, phc::Salt};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -61,10 +61,10 @@ impl Vault {
 
         let master_key = MasterKey::new();
         let config_jwt = master_key.sign_jwt(header.clone(), claims)?;
-        let params = Params::recommended();
-        let salt_string = SaltString::generate(rand::thread_rng());
-        let kek = util::derive_kek(password, params, salt_string.as_salt())?;
-        let wrapped_key = master_key.wrap(&kek, params, salt_string)?;
+        let params = Params::RECOMMENDED;
+        let salt = Salt::from_rng(&mut rand::rng());
+        let kek = util::derive_kek(password, params, salt)?;
+        let wrapped_key = master_key.wrap(&kek, params, salt)?;
         drop(kek);
 
         fs::create_dir_all(path.as_ref())?;
@@ -103,11 +103,8 @@ impl Vault {
         if master_key_uri.starts_with("masterkeyfile:") {
             let key_path = config_dir.join(master_key_uri.split_once("masterkeyfile:").unwrap().1);
             let wrapped_key = WrappedKey::from_file(key_path)?;
-            let kek = util::derive_kek(
-                password,
-                wrapped_key.scrypt_params,
-                wrapped_key.scrypt_salt.as_salt(),
-            )?;
+            let kek =
+                util::derive_kek(password, wrapped_key.scrypt_params, wrapped_key.scrypt_salt)?;
             let master_key = MasterKey::from_wrapped(&wrapped_key, &kek)
                 .context("failed to unwrap master key")
                 .suggestion("make sure you're using the correct password")?;

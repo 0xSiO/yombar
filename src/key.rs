@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use color_eyre::eyre::OptionExt;
 use hmac::{Hmac, digest::CtOutput};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
-use scrypt::{Params, password_hash::SaltString};
+use scrypt::{Params, phc::Salt};
 use secrets::{Secret, SecretBox};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::Sha256;
@@ -46,7 +46,7 @@ impl MasterKey {
         &self,
         key_encryption_key: &KeyEncryptionKey,
         scrypt_params: Params,
-        scrypt_salt: SaltString,
+        scrypt_salt: Salt,
     ) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
         let mut wrapped_mac_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
@@ -124,7 +124,7 @@ struct RawWrappedKey {
 }
 
 pub(crate) struct WrappedKey {
-    pub(crate) scrypt_salt: SaltString,
+    pub(crate) scrypt_salt: Salt,
     pub(crate) scrypt_params: Params,
     pub(crate) enc_key: [u8; ENCRYPTED_SUBKEY_LEN],
     pub(crate) mac_key: [u8; ENCRYPTED_SUBKEY_LEN],
@@ -136,7 +136,6 @@ impl WrappedKey {
     pub(crate) fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let json = fs::read_to_string(path)?;
         let raw: RawWrappedKey = serde_json::from_str(&json)?;
-        let recommended_params = Params::recommended();
         let salt_no_padding = raw.scrypt_salt.replace('=', "");
         let enc_key = *Base64::decode_vec(&raw.primary_master_key)?
             .first_chunk::<ENCRYPTED_SUBKEY_LEN>()
@@ -149,12 +148,11 @@ impl WrappedKey {
             .ok_or_eyre("invalid version mac length")?;
 
         Ok(Self {
-            scrypt_salt: SaltString::from_b64(&salt_no_padding)?,
+            scrypt_salt: Salt::from_b64(&salt_no_padding)?,
             scrypt_params: Params::new(
                 raw.scrypt_cost_param.ilog2() as u8,
                 raw.scrypt_block_size,
-                recommended_params.p(),
-                SUBKEY_LEN,
+                Params::RECOMMENDED_P,
             )?,
             enc_key,
             mac_key,
@@ -203,12 +201,12 @@ mod tests {
             .unwrap();
         let key = MasterKey::from_bytes(key_bytes);
         let password = SecretString::from(String::from("this is a test password"));
-        let params = Params::new(4, 8, 1, SUBKEY_LEN).unwrap();
-        let salt_string = SaltString::encode_b64(b"test salt").unwrap();
-        let kek = util::derive_kek(password, params, salt_string.as_salt()).unwrap();
-        let wrapped_key = key.wrap(&kek, params, salt_string.clone()).unwrap();
+        let params = Params::new(4, 8, 1).unwrap();
+        let salt = Salt::new(b"test salt").unwrap();
+        let kek = util::derive_kek(password, params, salt).unwrap();
+        let wrapped_key = key.wrap(&kek, params, salt).unwrap();
 
-        assert_eq!(wrapped_key.scrypt_salt, salt_string);
+        assert_eq!(wrapped_key.scrypt_salt, salt);
         assert_eq!(wrapped_key.scrypt_params.log_n(), params.log_n());
         assert_eq!(wrapped_key.scrypt_params.r(), params.r());
         assert_eq!(wrapped_key.scrypt_params.p(), params.p());

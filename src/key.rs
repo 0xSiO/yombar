@@ -1,4 +1,4 @@
-use std::{fmt::Debug, fs, path::Path};
+use std::{fmt::Debug, fs, path::Path, sync::Mutex};
 
 use aes_kw::{KeyInit, KwAes256};
 use base64ct::{Base64, Encoding};
@@ -18,28 +18,39 @@ const MAC_LEN: usize = 32;
 
 pub(crate) type KeyEncryptionKey = SecretBox<[u8; SUBKEY_LEN]>;
 
-#[derive(PartialEq, Eq, Clone)]
-pub struct MasterKey(SecretBox<[u8; SUBKEY_LEN * 2]>);
+pub struct MasterKey(Mutex<SecretBox<[u8; SUBKEY_LEN * 2]>>);
 
 impl MasterKey {
     pub fn new() -> Self {
-        Self(SecretBox::random())
+        Self(Mutex::new(SecretBox::random()))
     }
 
     /// Create a [`MasterKey`] from the provided byte array. For testing purposes only.
     #[cfg(test)]
     pub(crate) fn from_bytes(mut bytes: [u8; SUBKEY_LEN * 2]) -> Self {
-        MasterKey(SecretBox::from(&mut bytes))
+        MasterKey(Mutex::new(SecretBox::from(&mut bytes)))
     }
 
     /// Master encryption key. Avoid storing this where possible.
     pub(crate) fn enc_key(&self) -> [u8; SUBKEY_LEN] {
-        *self.0.borrow().first_chunk::<SUBKEY_LEN>().unwrap()
+        *self
+            .0
+            .lock()
+            .unwrap()
+            .borrow()
+            .first_chunk::<SUBKEY_LEN>()
+            .unwrap()
     }
 
     /// Master MAC key. Avoid storing this where possible.
     pub(crate) fn mac_key(&self) -> [u8; SUBKEY_LEN] {
-        *self.0.borrow().last_chunk::<SUBKEY_LEN>().unwrap()
+        *self
+            .0
+            .lock()
+            .unwrap()
+            .borrow()
+            .last_chunk::<SUBKEY_LEN>()
+            .unwrap()
     }
 
     pub(crate) fn wrap(
@@ -74,7 +85,7 @@ impl MasterKey {
             kw.unwrap_key(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
             kw.unwrap_key(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
             drop(kw);
-            Ok(MasterKey(SecretBox::from(&mut *buffer)))
+            Ok(MasterKey(Mutex::new(SecretBox::from(&mut *buffer))))
         })
     }
 
@@ -82,7 +93,7 @@ impl MasterKey {
         Ok(jsonwebtoken::encode(
             &header,
             &claims,
-            &EncodingKey::from_secret(&*self.0.borrow()),
+            &EncodingKey::from_secret(&*self.0.lock().unwrap().borrow()),
         )?)
     }
 
@@ -93,7 +104,7 @@ impl MasterKey {
     ) -> Result<TokenData<T>> {
         Ok(jsonwebtoken::decode(
             &token,
-            &DecodingKey::from_secret(&*self.0.borrow()),
+            &DecodingKey::from_secret(&*self.0.lock().unwrap().borrow()),
             &validation,
         )?)
     }
@@ -107,9 +118,17 @@ impl Default for MasterKey {
 
 impl Debug for MasterKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MasterKey")
+        f.debug_tuple("MasterKey").field(&"_").finish()
     }
 }
+
+impl PartialEq for MasterKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.lock().unwrap().eq(&other.0.lock().unwrap())
+    }
+}
+
+impl Eq for MasterKey {}
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

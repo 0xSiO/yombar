@@ -5,7 +5,7 @@ use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, Tag, UnboundKey};
 use base32ct::{Base32Upper, Encoding as Base32Encoding};
 use base64ct::{Base64Url, Encoding as Base64Encoding};
 use color_eyre::eyre::bail;
-use secrets::{Secret, SecretBox};
+use secrets::Secret;
 use sha1_checked::{Digest, Sha1};
 use unicode_normalization::UnicodeNormalization;
 
@@ -141,7 +141,7 @@ impl FileCryptor for Cryptor<'_> {
 
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         let (ciphertext, tag) =
-            self.aes_gcm_encrypt(&*header.payload.borrow(), &self.key.enc_key(), nonce, &[])?;
+            self.aes_gcm_encrypt(&header.payload(), &self.key.enc_key(), nonce, &[])?;
 
         buffer.extend(nonce);
         buffer.extend(ciphertext);
@@ -166,10 +166,10 @@ impl FileCryptor for Cryptor<'_> {
         let mut payload =
             self.aes_gcm_decrypt(enc_payload, &self.key.enc_key(), nonce, &[], tag)?;
 
-        Ok(FileHeader {
-            nonce: nonce.to_vec(),
-            payload: SecretBox::from(payload.first_chunk_mut::<HEADER_PAYLOAD_LEN>().unwrap()),
-        })
+        Ok(FileHeader::from_parts(
+            nonce.to_vec(),
+            payload.first_chunk_mut::<HEADER_PAYLOAD_LEN>().unwrap(),
+        ))
     }
 
     fn encrypt_chunk(
@@ -258,10 +258,7 @@ mod tests {
     fn file_chunk_test() {
         let key = MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]);
         let cryptor = Cryptor::new(&key);
-        let header = FileHeader {
-            nonce: vec![19; NONCE_LEN],
-            payload: SecretBox::from(&mut [23; HEADER_PAYLOAD_LEN]),
-        };
+        let header = FileHeader::from_parts(vec![19; NONCE_LEN], &mut [23; HEADER_PAYLOAD_LEN]);
         let chunk = b"the quick brown fox jumps over the lazy dog";
 
         let ciphertext = cryptor

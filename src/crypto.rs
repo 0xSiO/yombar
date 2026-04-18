@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf, sync::Mutex};
 
 use enum_dispatch::enum_dispatch;
 use secrets::{Secret, SecretBox};
@@ -11,10 +11,10 @@ pub mod siv_gcm;
 const HEADER_RESERVED_LEN: usize = 8;
 const HEADER_PAYLOAD_LEN: usize = HEADER_RESERVED_LEN + SUBKEY_LEN;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug)]
 pub struct FileHeader {
     nonce: Vec<u8>,
-    payload: SecretBox<[u8; HEADER_PAYLOAD_LEN]>,
+    payload: Mutex<SecretBox<[u8; HEADER_PAYLOAD_LEN]>>,
 }
 
 impl FileHeader {
@@ -29,13 +29,30 @@ impl FileHeader {
 
             Ok(Self {
                 nonce,
-                payload: SecretBox::from(&mut *s),
+                payload: Mutex::new(SecretBox::from(&mut *s)),
             })
         })
     }
 
+    fn from_parts(nonce: Vec<u8>, payload: &mut [u8; HEADER_PAYLOAD_LEN]) -> Self {
+        Self {
+            nonce,
+            payload: Mutex::new(SecretBox::from(payload)),
+        }
+    }
+
+    fn payload(&self) -> [u8; HEADER_PAYLOAD_LEN] {
+        *self.payload.lock().unwrap().borrow()
+    }
+
     fn content_key(&self) -> [u8; SUBKEY_LEN] {
-        *self.payload.borrow().last_chunk::<SUBKEY_LEN>().unwrap()
+        *self
+            .payload
+            .lock()
+            .unwrap()
+            .borrow()
+            .last_chunk::<SUBKEY_LEN>()
+            .unwrap()
     }
 }
 

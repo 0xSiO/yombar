@@ -1,6 +1,6 @@
 use std::{fmt::Debug, fs, path::Path};
 
-use aes_kw::KekAes256;
+use aes_kw::{KeyInit, KwAes256};
 use base64ct::{Base64, Encoding};
 use color_eyre::eyre::OptionExt;
 use hmac::{Hmac, digest::CtOutput};
@@ -15,6 +15,8 @@ use crate::{Result, util};
 pub(crate) const SUBKEY_LEN: usize = 32;
 const ENCRYPTED_SUBKEY_LEN: usize = SUBKEY_LEN + 8;
 const MAC_LEN: usize = 32;
+
+pub(crate) type KeyEncryptionKey = SecretBox<[u8; SUBKEY_LEN]>;
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct MasterKey(SecretBox<[u8; SUBKEY_LEN * 2]>);
@@ -42,15 +44,17 @@ impl MasterKey {
 
     pub(crate) fn wrap(
         &self,
-        key_encryption_key: &KekAes256,
+        key_encryption_key: &KeyEncryptionKey,
         scrypt_params: Params,
         scrypt_salt: SaltString,
     ) -> Result<WrappedKey> {
         let mut wrapped_enc_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
         let mut wrapped_mac_master_key = [0_u8; ENCRYPTED_SUBKEY_LEN];
 
-        key_encryption_key.wrap(&self.enc_key(), &mut wrapped_enc_master_key)?;
-        key_encryption_key.wrap(&self.mac_key(), &mut wrapped_mac_master_key)?;
+        let kw = KwAes256::new(&(*key_encryption_key.borrow()).into());
+        kw.wrap_key(&self.enc_key(), &mut wrapped_enc_master_key)?;
+        kw.wrap_key(&self.mac_key(), &mut wrapped_mac_master_key)?;
+        drop(kw);
 
         Ok(WrappedKey {
             scrypt_salt,
@@ -63,11 +67,13 @@ impl MasterKey {
 
     pub(crate) fn from_wrapped(
         wrapped_key: &WrappedKey,
-        key_encryption_key: &KekAes256,
+        key_encryption_key: &KeyEncryptionKey,
     ) -> Result<Self> {
         Secret::<[u8; SUBKEY_LEN * 2]>::new(|mut buffer| {
-            key_encryption_key.unwrap(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
-            key_encryption_key.unwrap(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
+            let kw = KwAes256::new(&(*key_encryption_key.borrow()).into());
+            kw.unwrap_key(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
+            kw.unwrap_key(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
+            drop(kw);
             Ok(MasterKey(SecretBox::from(&mut *buffer)))
         })
     }

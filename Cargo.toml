@@ -11,8 +11,8 @@ edition = "2024"
 # webdav = ["axum", "dav-server", "futures-util", "tokio"]
 
 [dependencies]
-aes = { version = "0.8", features = ["zeroize"] }
-aes-kw = { version = "0.2", features = ["std"] }
+aes = { version = "0.9", features = ["zeroize"] }
+aes-kw = "0.3"
 aes-siv = { version = "0.7", features = ["std"] }
 aws-lc-rs = { version = "1" }
 base32ct = { version = "0.3", features = ["alloc"] }
@@ -20,7 +20,7 @@ base64ct = { version = "1", features = ["alloc"] }
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
-ctr = { version = "0.9", features = ["std", "zeroize"] }
+ctr = { version = "0.10", features = ["zeroize"] }
 fd-lock = "4"
 hmac = { version = "0.12", features = ["std"] }
 jsonwebtoken = { version = "10", default-features = false, features = ["aws_lc_rs"] }

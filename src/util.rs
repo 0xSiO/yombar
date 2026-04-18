@@ -1,18 +1,17 @@
 use std::io::{self, Read};
 
-use aes_kw::{Kek, KekAes256};
 use hmac::{Hmac, Mac, digest::CtOutput};
 use scrypt::{
     Params, Scrypt,
     password_hash::{PasswordHasher, Salt},
 };
-use secrets::{Secret, SecretVec};
+use secrets::SecretVec;
 use sha2::Sha256;
 
 use crate::{
     Result,
     crypto::{Cryptor, FileCryptor},
-    key::{MasterKey, SUBKEY_LEN},
+    key::{KeyEncryptionKey, MasterKey},
 };
 
 pub struct SecretString {
@@ -29,14 +28,18 @@ impl From<String> for SecretString {
     }
 }
 
-pub(crate) fn derive_kek(password: SecretString, params: Params, salt: Salt) -> Result<KekAes256> {
-    let mut password_hash =
-        Scrypt.hash_password_customized(&password.bytes.borrow(), None, None, params, salt)?;
+pub(crate) fn derive_kek(
+    password: SecretString,
+    params: Params,
+    salt: Salt,
+) -> Result<KeyEncryptionKey> {
+    KeyEncryptionKey::try_new(|s| {
+        let mut password_hash =
+            Scrypt.hash_password_customized(&password.bytes.borrow(), None, None, params, salt)?;
 
-    Secret::<[u8; SUBKEY_LEN]>::new(|mut s| {
         // Ok to unwrap, Scrypt.hash_password_customized should have set the hash
         s.copy_from_slice(password_hash.hash.take().unwrap().as_bytes());
-        Ok(Kek::from(*s))
+        Ok(())
     })
 }
 
@@ -76,10 +79,12 @@ pub(crate) fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> 
 
 #[cfg(test)]
 mod tests {
+    use aes_kw::{KeyInit, KwAes256};
     use base64ct::{Base64, Encoding};
     use scrypt::password_hash::SaltString;
 
     use super::*;
+    use crate::key::SUBKEY_LEN;
 
     #[test]
     fn password_hash_test() {
@@ -102,7 +107,10 @@ mod tests {
         let salt_string = SaltString::encode_b64(b"examplesalt").unwrap();
         let params = Params::new(6, 8, 1, SUBKEY_LEN).unwrap();
         let kek = derive_kek(password, params, salt_string.as_salt()).unwrap();
-        let wrapped_data = kek.wrap_vec(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+        let kw = KwAes256::new(&(*kek.borrow()).into());
+        let mut wrapped_data = vec![0; 16];
+        kw.wrap_key(&[1, 2, 3, 4, 5, 6, 7, 8], &mut wrapped_data)
+            .unwrap();
 
         assert_eq!(
             Base64::encode_string(&wrapped_data),

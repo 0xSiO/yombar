@@ -5,35 +5,33 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use fuser::FUSE_ROOT_ID;
-
-use super::Inode;
+use fuser::INodeNo;
 
 #[derive(Debug, Default)]
 struct Node {
     name: OsString,
-    parent: Option<Inode>,
-    children: BTreeMap<OsString, Inode>,
+    parent: Option<INodeNo>,
+    children: BTreeMap<OsString, INodeNo>,
 }
 
 #[derive(Debug)]
 pub(crate) struct DirTree {
-    nodes: BTreeMap<Inode, Node>,
+    nodes: BTreeMap<INodeNo, Node>,
     next_inode: AtomicU64,
 }
 
 impl DirTree {
     pub(crate) fn new() -> Self {
         let mut nodes = BTreeMap::new();
-        nodes.insert(FUSE_ROOT_ID, Default::default());
+        nodes.insert(INodeNo::ROOT, Default::default());
 
         Self {
             nodes,
-            next_inode: AtomicU64::new(FUSE_ROOT_ID + 1),
+            next_inode: AtomicU64::new(INodeNo::ROOT.0 + 1),
         }
     }
 
-    pub(crate) fn get_path(&self, inode: Inode) -> Option<PathBuf> {
+    pub(crate) fn get_path(&self, inode: INodeNo) -> Option<PathBuf> {
         match self.nodes.get(&inode) {
             Some(node) => match node.parent {
                 // We're going to assume the parent node exists
@@ -44,8 +42,8 @@ impl DirTree {
         }
     }
 
-    pub(crate) fn insert_path(&mut self, path: impl AsRef<Path>) -> Inode {
-        let mut inode = FUSE_ROOT_ID;
+    pub(crate) fn insert_path(&mut self, path: impl AsRef<Path>) -> INodeNo {
+        let mut inode = INodeNo::ROOT;
         for component in path.as_ref().components() {
             let name: &OsStr = component.as_ref();
 
@@ -60,7 +58,7 @@ impl DirTree {
                         children: BTreeMap::new(),
                     };
 
-                    inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+                    inode = INodeNo(self.next_inode.fetch_add(1, Ordering::SeqCst));
                     node.children.insert(name.to_owned(), inode);
                     self.nodes.insert(inode, child);
                 }
@@ -72,9 +70,9 @@ impl DirTree {
 
     pub(crate) fn rename(
         &mut self,
-        old_parent: Inode,
+        old_parent: INodeNo,
         old_name: impl AsRef<OsStr>,
-        new_parent: Inode,
+        new_parent: INodeNo,
         new_name: impl AsRef<OsStr>,
     ) {
         let inode = match self
@@ -97,7 +95,7 @@ impl DirTree {
         }
     }
 
-    pub(crate) fn remove(&mut self, parent: Inode, name: impl AsRef<OsStr>) {
+    pub(crate) fn remove(&mut self, parent: INodeNo, name: impl AsRef<OsStr>) {
         if let Some(node) = self.nodes.get_mut(&parent)
             && let Some(inode) = node.children.remove(name.as_ref())
         {
@@ -105,7 +103,7 @@ impl DirTree {
         }
     }
 
-    pub(crate) fn forget(&mut self, inode: Inode) {
+    pub(crate) fn forget(&mut self, inode: INodeNo) {
         if let Some(node) = self.nodes.remove(&inode)
             && let Some(parent) = node.parent
             && let Some(parent_node) = self.nodes.get_mut(&parent)

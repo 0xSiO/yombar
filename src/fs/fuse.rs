@@ -13,6 +13,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use dashmap::DashMap;
 use fuser::*;
 
 use crate::{
@@ -70,8 +71,8 @@ impl From<Attributes> for FileAttr {
 pub struct FuseFileSystem<'v> {
     fs: EncryptedFileSystem<'v>,
     tree: DirTree,
-    open_dirs: BTreeMap<FileHandle, BTreeMap<PathBuf, DirEntry>>,
-    open_files: BTreeMap<FileHandle, EncryptedFile<'v>>,
+    open_dirs: DashMap<FileHandle, BTreeMap<PathBuf, DirEntry>>,
+    open_files: DashMap<FileHandle, EncryptedFile<'v>>,
     next_handle: AtomicU64,
 }
 
@@ -169,7 +170,7 @@ impl Filesystem for FuseFileSystem<'static> {
             if let Some(size) = size {
                 if let Some(fh) = fh {
                     match self.open_files.get_mut(&fh) {
-                        Some(file) => {
+                        Some(mut file) => {
                             if let Err(err) = file.set_len(size) {
                                 tracing::error!("{err:?}");
                                 return reply.error(Errno::EIO);
@@ -454,16 +455,11 @@ impl Filesystem for FuseFileSystem<'static> {
         _lock_owner: Option<LockOwner>,
         reply: ReplyData,
     ) {
-        if let Some(file) = self.open_files.get_mut(&fh) {
-            if offset < 0 {
-                tracing::warn!(offset, "invalid file offset");
-                return reply.error(Errno::EINVAL);
-            }
-
+        if let Some(mut file) = self.open_files.get_mut(&fh) {
             match file.seek(SeekFrom::Start(offset)) {
                 Ok(pos) if pos == offset => {
                     let mut buf = vec![0_u8; size as usize];
-                    match util::try_read_exact(file, &mut buf) {
+                    match util::try_read_exact(&mut *file, &mut buf) {
                         Ok((false, n)) => buf.truncate(n),
                         Ok(_) => {}
                         Err(err) => {
@@ -500,12 +496,7 @@ impl Filesystem for FuseFileSystem<'static> {
         _lock_owner: Option<LockOwner>,
         reply: ReplyWrite,
     ) {
-        if let Some(file) = self.open_files.get_mut(&fh) {
-            if offset < 0 {
-                tracing::warn!(offset, "invalid file offset");
-                return reply.error(Errno::EINVAL);
-            }
-
+        if let Some(mut file) = self.open_files.get_mut(&fh) {
             match file.seek(SeekFrom::Start(offset)) {
                 Ok(pos) if pos == offset => {
                     if let Err(err) = file.write_all(data) {
@@ -537,7 +528,7 @@ impl Filesystem for FuseFileSystem<'static> {
         _lock_owner: LockOwner,
         reply: ReplyEmpty,
     ) {
-        if let Some(file) = self.open_files.get_mut(&fh) {
+        if let Some(mut file) = self.open_files.get_mut(&fh) {
             if let Err(err) = file.flush() {
                 tracing::error!("{err:?}");
                 reply.error(Errno::EIO);
@@ -572,7 +563,7 @@ impl Filesystem for FuseFileSystem<'static> {
         datasync: bool,
         reply: ReplyEmpty,
     ) {
-        if let Some(file) = self.open_files.get_mut(&fh) {
+        if let Some(mut file) = self.open_files.get_mut(&fh) {
             let result = if datasync {
                 file.sync_data()
             } else {

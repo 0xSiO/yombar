@@ -100,7 +100,7 @@ fn main() -> Result<()> {
             mount_point,
             read_only,
         } => {
-            use fuser::MountOption;
+            use fuser::{Config, MountOption};
             use yombar::fs::fuse::FuseFileSystem;
 
             if !vault_path.exists() {
@@ -110,13 +110,16 @@ fn main() -> Result<()> {
             let password = SecretString::from(rpassword::prompt_password("Password: ")?);
             let vault = Vault::open(&vault_path, password)?;
 
-            let mut mount_options = vec![
+            let mut config = Config::default();
+            config.mount_options = vec![
                 MountOption::FSName(String::from("yombar")),
                 MountOption::DefaultPermissions,
             ];
+            config.n_threads = Some(2);
+            config.clone_fd = true;
 
             if read_only {
-                mount_options.push(MountOption::RO);
+                config.mount_options.push(MountOption::RO);
             }
 
             std::fs::create_dir_all(&mount_point)?;
@@ -124,7 +127,7 @@ fn main() -> Result<()> {
             fuser::mount2(
                 FuseFileSystem::new(EncryptedFileSystem::new(&vault)),
                 &mount_point,
-                &mount_options,
+                &config,
             )?;
         }
         // #[cfg(feature = "webdav")]

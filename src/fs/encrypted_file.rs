@@ -15,17 +15,17 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct EncryptedFile<'k> {
-    cryptor: Cryptor<'k>,
+pub struct EncryptedFile {
+    cryptor: Cryptor,
     file: RwLock<File>,
     header: FileHeader,
     append: bool,
 }
 
-impl<'k> EncryptedFile<'k> {
+impl EncryptedFile {
     /// Open an existing encrypted file at the provided path, using the provided options.
     pub fn open(
-        cryptor: Cryptor<'k>,
+        cryptor: &Cryptor,
         path: impl AsRef<Path> + Debug,
         options: OpenOptions,
     ) -> Result<Self> {
@@ -39,7 +39,7 @@ impl<'k> EncryptedFile<'k> {
         drop(guard);
 
         Ok(Self {
-            cryptor,
+            cryptor: cryptor.clone(),
             file,
             header,
             append: false,
@@ -47,7 +47,7 @@ impl<'k> EncryptedFile<'k> {
     }
 
     /// Create a new encrypted file in read-write mode; error if the file exists.
-    pub fn create_new(cryptor: Cryptor<'k>, path: impl AsRef<Path> + Debug) -> Result<Self> {
+    pub fn create_new(cryptor: &Cryptor, path: impl AsRef<Path> + Debug) -> Result<Self> {
         let mut file = RwLock::new(File::create_new(&path)?);
 
         // Write a header in the new file
@@ -79,7 +79,7 @@ impl<'k> EncryptedFile<'k> {
     }
 
     // Fetch the current cleartext byte position in the file.
-    fn cleartext_pos(cryptor: Cryptor<'k>, file: &File) -> io::Result<u64> {
+    fn cleartext_pos(cryptor: &Cryptor, file: &File) -> io::Result<u64> {
         Ok(util::get_cleartext_size(
             cryptor,
             Self::ciphertext_pos(file)?,
@@ -87,7 +87,7 @@ impl<'k> EncryptedFile<'k> {
     }
 
     /// Fetch the cleartext size of the file, in bytes.
-    fn cleartext_len(cryptor: Cryptor<'k>, file: &File) -> io::Result<u64> {
+    fn cleartext_len(cryptor: &Cryptor, file: &File) -> io::Result<u64> {
         Ok(util::get_cleartext_size(
             cryptor,
             Self::ciphertext_len(file)?,
@@ -95,7 +95,7 @@ impl<'k> EncryptedFile<'k> {
     }
 
     /// Seek without needing &mut self.
-    fn seek_inner(cryptor: Cryptor<'k>, mut file: &File, pos: SeekFrom) -> io::Result<u64> {
+    fn seek_inner(cryptor: &Cryptor, mut file: &File, pos: SeekFrom) -> io::Result<u64> {
         match pos {
             SeekFrom::Start(n) => {
                 if n == Self::cleartext_pos(cryptor, file)? {
@@ -144,7 +144,7 @@ impl<'k> EncryptedFile<'k> {
     /// Fetch the cleartext size of the file, in bytes.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> io::Result<u64> {
-        Self::cleartext_len(self.cryptor, &*self.file.try_read()?)
+        Self::cleartext_len(&self.cryptor, &*self.file.try_read()?)
     }
 
     pub fn set_len(&mut self, new_len: u64) -> io::Result<()> {
@@ -162,14 +162,14 @@ impl<'k> EncryptedFile<'k> {
 
                 let max_chunk_len = self.cryptor.max_chunk_len();
                 let current_pos =
-                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(new_len))? as usize;
+                    Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(new_len))? as usize;
                 let chunk_number = current_pos / max_chunk_len;
                 let chunk_offset = current_pos % max_chunk_len;
                 let chunk_start = chunk_number * max_chunk_len;
 
                 if chunk_offset > 0 {
                     // We're partway through a chunk, so we need to truncate it
-                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+                    Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
 
                     let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
                     if let (false, n) = util::try_read_exact(&*guard, &mut ciphertext_chunk)? {
@@ -186,7 +186,7 @@ impl<'k> EncryptedFile<'k> {
                         .encrypt_chunk(chunk, &self.header, chunk_number)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-                    Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+                    Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
                     (&*guard).write_all(&new_ciphertext_chunk)?;
                 }
 
@@ -213,26 +213,26 @@ impl<'k> EncryptedFile<'k> {
     }
 }
 
-impl Read for EncryptedFile<'_> {
+impl Read for EncryptedFile {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let guard = self.file.try_read()?;
 
         if buf.is_empty()
-            || Self::cleartext_pos(self.cryptor, &guard)?
-                >= Self::cleartext_len(self.cryptor, &guard)?
+            || Self::cleartext_pos(&self.cryptor, &guard)?
+                >= Self::cleartext_len(&self.cryptor, &guard)?
         {
             return Ok(0);
         }
 
         let max_chunk_len = self.cryptor.max_chunk_len();
-        let current_pos = Self::cleartext_pos(self.cryptor, &guard)? as usize;
+        let current_pos = Self::cleartext_pos(&self.cryptor, &guard)? as usize;
         let chunk_number = current_pos / max_chunk_len;
         let chunk_offset = current_pos % max_chunk_len;
         let chunk_start = chunk_number * max_chunk_len;
 
         // Ensure we're positioned at a chunk boundary
         if chunk_offset > 0 {
-            Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+            Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
         }
 
         let mut ciphertext_chunk = vec![0; self.cryptor.max_encrypted_chunk_len()];
@@ -247,7 +247,7 @@ impl Read for EncryptedFile<'_> {
 
         let bytes_read = (&chunk[chunk_offset..]).read(buf)?;
         Self::seek_inner(
-            self.cryptor,
+            &self.cryptor,
             &guard,
             SeekFrom::Start((current_pos + bytes_read) as u64),
         )?;
@@ -256,14 +256,14 @@ impl Read for EncryptedFile<'_> {
     }
 }
 
-impl Seek for EncryptedFile<'_> {
+impl Seek for EncryptedFile {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let guard = self.file.try_read()?;
-        Self::seek_inner(self.cryptor, &guard, pos)
+        Self::seek_inner(&self.cryptor, &guard, pos)
     }
 }
 
-impl Write for EncryptedFile<'_> {
+impl Write for EncryptedFile {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut guard = self.file.try_write()?;
 
@@ -273,16 +273,16 @@ impl Write for EncryptedFile<'_> {
 
         // If we're in append mode, we need to skip to the end first
         if self.append {
-            Self::seek_inner(self.cryptor, &guard, SeekFrom::End(0))?;
+            Self::seek_inner(&self.cryptor, &guard, SeekFrom::End(0))?;
         }
 
-        let cleartext_pos = Self::cleartext_pos(self.cryptor, &guard)?;
-        let cleartext_len = Self::cleartext_len(self.cryptor, &guard)?;
+        let cleartext_pos = Self::cleartext_pos(&self.cryptor, &guard)?;
+        let cleartext_len = Self::cleartext_len(&self.cryptor, &guard)?;
 
         // If we've seeked beyond the end, we need to fill in the empty space with zeros
         if cleartext_pos > cleartext_len {
             let extension = vec![0; (cleartext_pos - cleartext_len) as usize];
-            Self::seek_inner(self.cryptor, &guard, SeekFrom::End(0))?;
+            Self::seek_inner(&self.cryptor, &guard, SeekFrom::End(0))?;
             drop(guard);
             self.write_all(&extension)?;
             guard = self.file.try_write()?;
@@ -296,7 +296,7 @@ impl Write for EncryptedFile<'_> {
 
         // Ensure we're positioned at a chunk boundary
         if chunk_offset > 0 {
-            Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+            Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
         }
 
         let bytes_written;
@@ -356,10 +356,10 @@ impl Write for EncryptedFile<'_> {
             }
         };
 
-        Self::seek_inner(self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
+        Self::seek_inner(&self.cryptor, &guard, SeekFrom::Start(chunk_start as u64))?;
         (&*guard).write_all(&replacement_chunk)?;
         Self::seek_inner(
-            self.cryptor,
+            &self.cryptor,
             &guard,
             SeekFrom::Start((current_pos + bytes_written) as u64),
         )?;

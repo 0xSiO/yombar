@@ -65,7 +65,7 @@ pub(crate) fn try_read_exact(mut this: impl Read, mut buf: &mut [u8]) -> io::Res
     Ok((buf.is_empty(), bytes_read))
 }
 
-pub(crate) fn get_cleartext_size(cryptor: Cryptor<'_>, ciphertext_size: u64) -> u64 {
+pub(crate) fn get_cleartext_size(cryptor: &Cryptor, ciphertext_size: u64) -> u64 {
     let max_enc_chunk_len = cryptor.max_encrypted_chunk_len() as u64;
     let max_chunk_len = cryptor.max_chunk_len() as u64;
     let enc_chunks_len = ciphertext_size - cryptor.encrypted_header_len() as u64;

@@ -37,16 +37,16 @@ pub struct DirEntry {
     pub metadata: Metadata,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct EncryptedFileSystem<'v> {
-    vault: &'v Vault,
-    translator: Translator<'v>,
+#[derive(Debug, Clone)]
+pub struct EncryptedFileSystem {
+    vault: Vault,
+    translator: Translator,
 }
 
-impl<'v> EncryptedFileSystem<'v> {
-    pub fn new(vault: &'v Vault) -> Self {
+impl EncryptedFileSystem {
+    pub fn new(vault: &Vault) -> Self {
         Self {
-            vault,
+            vault: vault.clone(),
             translator: Translator::new(vault),
         }
     }
@@ -78,7 +78,7 @@ impl<'v> EncryptedFileSystem<'v> {
         // File, full-length name
         if ciphertext_path.is_file() {
             let meta = ciphertext_path.metadata()?;
-            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+            let size = util::get_cleartext_size(&self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::File,
                 size,
@@ -89,7 +89,7 @@ impl<'v> EncryptedFileSystem<'v> {
         // File, shortened name
         if ciphertext_path.is_dir() && ciphertext_path.join("contents.c9r").is_file() {
             let meta = ciphertext_path.join("contents.c9r").metadata()?;
-            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+            let size = util::get_cleartext_size(&self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::File,
                 size,
@@ -112,7 +112,7 @@ impl<'v> EncryptedFileSystem<'v> {
         // Symlink, either full-length or shortened name
         if ciphertext_path.is_dir() && ciphertext_path.join("symlink.c9r").is_file() {
             let meta = ciphertext_path.join("symlink.c9r").metadata()?;
-            let size = util::get_cleartext_size(self.vault.cryptor(), meta.len());
+            let size = util::get_cleartext_size(&self.vault.cryptor(), meta.len());
             return Ok(DirEntry {
                 kind: FileKind::Symlink,
                 size,
@@ -160,7 +160,7 @@ impl<'v> EncryptedFileSystem<'v> {
             let mut decrypted = String::new();
             let mut options = OpenOptions::new();
             options.read(true);
-            EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)?
+            EncryptedFile::open(&self.vault.cryptor(), ciphertext_path, options)?
                 .read_to_string(&mut decrypted)?;
 
             Ok(decrypted.into())
@@ -173,7 +173,7 @@ impl<'v> EncryptedFileSystem<'v> {
         &self,
         cleartext_path: impl AsRef<Path>,
         options: OpenOptions,
-    ) -> Result<EncryptedFile<'v>> {
+    ) -> Result<EncryptedFile> {
         let dir_id = self.translator.get_dir_id(&cleartext_path)?;
         let mut ciphertext_path = self
             .translator
@@ -183,7 +183,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        EncryptedFile::open(self.vault.cryptor(), ciphertext_path, options)
+        EncryptedFile::open(&self.vault.cryptor(), ciphertext_path, options)
     }
 
     pub fn rename_file(
@@ -385,7 +385,7 @@ impl<'v> EncryptedFileSystem<'v> {
             ciphertext_path = ciphertext_path.join("contents.c9r");
         }
 
-        let file = EncryptedFile::create_new(self.vault.cryptor(), &ciphertext_path)?;
+        let file = EncryptedFile::create_new(&self.vault.cryptor(), &ciphertext_path)?;
         fs::set_permissions(ciphertext_path, permissions)?;
 
         Ok(DirEntry {
@@ -422,7 +422,7 @@ impl<'v> EncryptedFileSystem<'v> {
         let hashed_dir_path = self.vault.path().join("d").join(hashed_dir_id);
         fs::create_dir_all(&hashed_dir_path)?;
         fs::set_permissions(&hashed_dir_path, permissions)?;
-        EncryptedFile::create_new(self.vault.cryptor(), hashed_dir_path.join("dirid.c9r"))?
+        EncryptedFile::create_new(&self.vault.cryptor(), hashed_dir_path.join("dirid.c9r"))?
             .write_all(dir_id.as_bytes())?;
 
         let meta = hashed_dir_path.metadata()?;
@@ -455,7 +455,7 @@ impl<'v> EncryptedFileSystem<'v> {
         }
 
         let mut symlink =
-            EncryptedFile::create_new(self.vault.cryptor(), ciphertext_path.join("symlink.c9r"))?;
+            EncryptedFile::create_new(&self.vault.cryptor(), ciphertext_path.join("symlink.c9r"))?;
         symlink.write_all(target.as_ref().as_os_str().as_encoded_bytes())?;
         symlink.flush()?;
 

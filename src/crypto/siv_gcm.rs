@@ -27,13 +27,13 @@ const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + HEADER_PAYLOAD_LEN + TAG_LEN;
 const MAX_CHUNK_LEN: usize = 32 * 1024;
 const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + TAG_LEN;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Cryptor<'k> {
-    key: &'k MasterKey,
+#[derive(Debug, Clone)]
+pub struct Cryptor {
+    key: MasterKey,
 }
 
-impl<'k> Cryptor<'k> {
-    pub fn new(key: &'k MasterKey) -> Self {
+impl Cryptor {
+    pub fn new(key: MasterKey) -> Self {
         Self { key }
     }
 
@@ -116,7 +116,7 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl FileCryptor for Cryptor<'_> {
+impl FileCryptor for Cryptor {
     fn encrypted_header_len(&self) -> usize {
         ENCRYPTED_HEADER_LEN
     }
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn file_chunk_test() {
         let key = MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]);
-        let cryptor = Cryptor::new(&key);
+        let cryptor = Cryptor::new(key);
         let header = FileHeader::from_parts(vec![19; NONCE_LEN], &mut [23; HEADER_PAYLOAD_LEN]);
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

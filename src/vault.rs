@@ -2,6 +2,7 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use color_eyre::{
@@ -40,10 +41,10 @@ pub struct VaultConfig {
     pub cipher_combo: CipherCombo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Vault {
-    path: PathBuf,
-    config: TokenData<VaultConfig>,
+    path: Arc<PathBuf>,
+    config: Arc<TokenData<VaultConfig>>,
     master_key: MasterKey,
 }
 
@@ -70,8 +71,8 @@ impl Vault {
         fs::create_dir_all(path.as_ref())?;
         let path = path.as_ref().canonicalize()?;
         let vault = Self {
-            path,
-            config: TokenData { header, claims },
+            path: Arc::new(path),
+            config: Arc::new(TokenData { header, claims }),
             master_key,
         };
 
@@ -83,7 +84,7 @@ impl Vault {
 
         let fs = EncryptedFileSystem::new(&vault);
         fs::create_dir_all(fs.root_dir())?;
-        EncryptedFile::create_new(vault.cryptor(), fs.root_dir().join("dirid.c9r"))?
+        EncryptedFile::create_new(&vault.cryptor(), fs.root_dir().join("dirid.c9r"))?
             .write_all(b"")?;
 
         Ok(vault)
@@ -123,8 +124,8 @@ impl Vault {
             }
 
             Ok(Self {
-                path: config_dir,
-                config,
+                path: Arc::new(config_dir),
+                config: Arc::new(config),
                 master_key,
             })
         } else {
@@ -140,12 +141,12 @@ impl Vault {
         &self.config
     }
 
-    pub fn cryptor(&'_ self) -> Cryptor<'_> {
+    pub fn cryptor(&self) -> Cryptor {
         match self.config().claims.cipher_combo {
             CipherCombo::SivCtrMac => {
-                Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(&self.master_key))
+                Cryptor::SivCtrMac(siv_ctrmac::Cryptor::new(self.master_key.clone()))
             }
-            CipherCombo::SivGcm => Cryptor::SivGcm(siv_gcm::Cryptor::new(&self.master_key)),
+            CipherCombo::SivGcm => Cryptor::SivGcm(siv_gcm::Cryptor::new(self.master_key.clone())),
         }
     }
 }

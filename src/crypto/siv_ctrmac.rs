@@ -33,13 +33,13 @@ const ENCRYPTED_HEADER_LEN: usize = NONCE_LEN + HEADER_PAYLOAD_LEN + MAC_LEN;
 const MAX_CHUNK_LEN: usize = 32 * 1024;
 const MAX_ENCRYPTED_CHUNK_LEN: usize = NONCE_LEN + MAX_CHUNK_LEN + MAC_LEN;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Cryptor<'k> {
-    key: &'k MasterKey,
+#[derive(Debug, Clone)]
+pub struct Cryptor {
+    key: MasterKey,
 }
 
-impl<'k> Cryptor<'k> {
-    pub fn new(key: &'k MasterKey) -> Self {
+impl Cryptor {
+    pub fn new(key: MasterKey) -> Self {
         Self { key }
     }
 
@@ -86,7 +86,7 @@ impl<'k> Cryptor<'k> {
         buffer.extend(self.aes_ctr(chunk, &header.content_key(), nonce)?);
         buffer.extend(
             util::hmac(
-                self.key,
+                &self.key,
                 &[&header.nonce, chunk_number.to_be_bytes().as_ref(), &buffer].concat(),
             )
             .into_bytes(),
@@ -98,7 +98,7 @@ impl<'k> Cryptor<'k> {
     }
 }
 
-impl FileCryptor for Cryptor<'_> {
+impl FileCryptor for Cryptor {
     fn encrypted_header_len(&self) -> usize {
         ENCRYPTED_HEADER_LEN
     }
@@ -124,7 +124,7 @@ impl FileCryptor for Cryptor<'_> {
         let nonce = header.nonce.first_chunk::<NONCE_LEN>().unwrap();
         buffer.extend(nonce);
         buffer.extend(self.aes_ctr(&header.payload(), &self.key.enc_key(), nonce)?);
-        buffer.extend(util::hmac(self.key, &buffer).into_bytes());
+        buffer.extend(util::hmac(&self.key, &buffer).into_bytes());
 
         debug_assert_eq!(buffer.len(), ENCRYPTED_HEADER_LEN);
 
@@ -145,7 +145,7 @@ impl FileCryptor for Cryptor<'_> {
         // First, verify the HMAC
         let expected_mac = CtOutput::new((*expected_mac).into());
         let actual_mac = util::hmac(
-            self.key,
+            &self.key,
             &encrypted_header[..NONCE_LEN + HEADER_PAYLOAD_LEN],
         );
         if actual_mac != expected_mac {
@@ -198,7 +198,7 @@ impl FileCryptor for Cryptor<'_> {
         // First, verify the HMAC
         let expected_mac = CtOutput::new((*expected_mac).into());
         let actual_mac = util::hmac(
-            self.key,
+            &self.key,
             &[
                 &header.nonce,
                 chunk_number.to_be_bytes().as_ref(),
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn file_chunk_test() {
         let key = MasterKey::from_bytes([13_u8; SUBKEY_LEN * 2]);
-        let cryptor = Cryptor::new(&key);
+        let cryptor = Cryptor::new(key);
         let header = FileHeader::from_parts(vec![19; NONCE_LEN], &mut [23; HEADER_PAYLOAD_LEN]);
         let chunk = b"the quick brown fox jumps over the lazy dog";
 

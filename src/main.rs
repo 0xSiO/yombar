@@ -115,7 +115,7 @@ fn main() -> Result<()> {
                 MountOption::FSName(String::from("yombar")),
                 MountOption::DefaultPermissions,
             ];
-            config.n_threads = Some(2);
+            config.n_threads = Some(num_cpus::get());
             config.clone_fd = true;
 
             if read_only {

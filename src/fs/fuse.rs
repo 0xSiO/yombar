@@ -68,16 +68,16 @@ impl From<Attributes> for FileAttr {
     }
 }
 
-pub struct FuseFileSystem<'v> {
-    fs: EncryptedFileSystem<'v>,
+pub struct FuseFileSystem {
+    fs: EncryptedFileSystem,
     tree: DirTree,
     open_dirs: DashMap<FileHandle, BTreeMap<PathBuf, DirEntry>>,
-    open_files: DashMap<FileHandle, EncryptedFile<'v>>,
+    open_files: DashMap<FileHandle, EncryptedFile>,
     next_handle: AtomicU64,
 }
 
-impl<'v> FuseFileSystem<'v> {
-    pub fn new(fs: EncryptedFileSystem<'v>) -> Self {
+impl FuseFileSystem {
+    pub fn new(fs: EncryptedFileSystem) -> Self {
         Self {
             fs,
             tree: DirTree::new(),
@@ -90,7 +90,7 @@ impl<'v> FuseFileSystem<'v> {
 
 // TODO: Explore flags sent to and returned from these methods
 // e.g. https://github.com/torvalds/linux/blob/7c626ce4bae1ac14f60076d00eafe71af30450ba/include/uapi/linux/fuse.h#L353
-impl Filesystem for FuseFileSystem<'static> {
+impl Filesystem for FuseFileSystem {
     fn init(&mut self, _req: &Request, _config: &mut KernelConfig) -> io::Result<()> {
         Ok(())
     }

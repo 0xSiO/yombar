@@ -1,4 +1,9 @@
-use std::{fmt::Debug, fs, path::Path, sync::Mutex};
+use std::{
+    fmt::Debug,
+    fs,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 use aes_kw::{KeyInit, KwAes256};
 use base64ct::{Base64, Encoding};
@@ -18,17 +23,18 @@ const MAC_LEN: usize = 32;
 
 pub(crate) type KeyEncryptionKey = SecretBox<[u8; SUBKEY_LEN]>;
 
-pub struct MasterKey(Mutex<SecretBox<[u8; SUBKEY_LEN * 2]>>);
+#[derive(Clone)]
+pub struct MasterKey(Arc<Mutex<SecretBox<[u8; SUBKEY_LEN * 2]>>>);
 
 impl MasterKey {
     pub fn new() -> Self {
-        Self(Mutex::new(SecretBox::random()))
+        Self(Arc::new(Mutex::new(SecretBox::random())))
     }
 
     /// Create a [`MasterKey`] from the provided byte array. For testing purposes only.
     #[cfg(test)]
     pub(crate) fn from_bytes(mut bytes: [u8; SUBKEY_LEN * 2]) -> Self {
-        MasterKey(Mutex::new(SecretBox::from(&mut bytes)))
+        MasterKey(Arc::new(Mutex::new(SecretBox::from(&mut bytes))))
     }
 
     /// Master encryption key. Avoid storing this where possible.
@@ -85,7 +91,9 @@ impl MasterKey {
             kw.unwrap_key(&wrapped_key.enc_key, &mut buffer[0..SUBKEY_LEN])?;
             kw.unwrap_key(&wrapped_key.mac_key, &mut buffer[SUBKEY_LEN..])?;
             drop(kw);
-            Ok(MasterKey(Mutex::new(SecretBox::from(&mut *buffer))))
+            Ok(MasterKey(Arc::new(Mutex::new(SecretBox::from(
+                &mut *buffer,
+            )))))
         })
     }
 

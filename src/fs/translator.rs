@@ -10,14 +10,16 @@ use sha1_checked::{Digest, Sha1};
 
 use crate::{Result, crypto::FileCryptor, vault::Vault};
 
-#[derive(Debug, Copy, Clone)]
-pub struct Translator<'v> {
-    vault: &'v Vault,
+#[derive(Debug, Clone)]
+pub struct Translator {
+    vault: Vault,
 }
 
-impl<'v> Translator<'v> {
-    pub fn new(vault: &'v Vault) -> Self {
-        Self { vault }
+impl Translator {
+    pub fn new(vault: &Vault) -> Self {
+        Self {
+            vault: vault.clone(),
+        }
     }
 
     /// Translates a cleartext name to its full, unshortened ciphertext name, including .c9r

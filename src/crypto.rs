@@ -99,9 +99,9 @@ pub trait FileCryptor {
     ) -> Result<String>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[enum_dispatch(FileCryptor)]
-pub enum Cryptor<'k> {
-    SivCtrMac(siv_ctrmac::Cryptor<'k>),
-    SivGcm(siv_gcm::Cryptor<'k>),
+pub enum Cryptor {
+    SivCtrMac(siv_ctrmac::Cryptor),
+    SivGcm(siv_gcm::Cryptor),
 }

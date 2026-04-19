@@ -121,7 +121,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check reading smaller files
     let mut file = EncryptedFile::open(
-        cryptor,
+        &cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/IOiZwngROqT1h7atIffotwJTN42_OtnvLdLgJTQ=.c9r",
         File::options().read(true).clone(),
     )?;
@@ -132,7 +132,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
 
     // Check reading larger files
     let mut file = EncryptedFile::open(
-        cryptor,
+        &cryptor,
         "tests/fixtures/vault_v8_siv_ctrmac/d/GI/YO5RUXD5NP6IP7GFAWSNT5IIEP6J7A/lTrI2Jfu-YkLpHmfu_OZPge73NerWUK5wjFewa8E.c9r",
         File::options().read(true).clone(),
     )?;
@@ -147,7 +147,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     )?;
 
     let _ = fs::remove_file("tests/test_small_siv_ctrmac.c9r");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_ctrmac.c9r")?;
+    let mut file = EncryptedFile::create_new(&cryptor, "tests/test_small_siv_ctrmac.c9r")?;
     file.write_all(b"this is a test file with some text in it\n")?;
     file.flush()?;
 
@@ -175,7 +175,7 @@ pub fn siv_ctrmac_basic() -> yombar::Result<()> {
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 
     let _ = fs::remove_file("tests/test_larger_siv_ctrmac.c9r");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_ctrmac.c9r")?;
+    let mut file = EncryptedFile::create_new(&cryptor, "tests/test_larger_siv_ctrmac.c9r")?;
     file.write_all(&image_data)?;
     file.flush()?;
 
@@ -299,7 +299,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     // Check reading smaller files
     let mut file = EncryptedFile::open(
-        cryptor,
+        &cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/Nl7o6qgpvLuA9XfYd_VxL0JwzfAO_tuJLghsGuY=.c9r",
         File::options().read(true).clone(),
     )?;
@@ -310,7 +310,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
 
     // Check reading larger files
     let mut file = EncryptedFile::open(
-        cryptor,
+        &cryptor,
         "tests/fixtures/vault_v8_siv_gcm/d/QD/W5WPJ7TSDTMH2G4363MJUELZ7KZMHK/WQ6sflYGPWPHJubj3F4ZMYwhKraEQUCV42gL11XA.c9r",
         File::options().read(true).clone(),
     )?;
@@ -325,7 +325,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     )?;
 
     let _ = fs::remove_file("tests/test_small_siv_gcm.c9r");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_small_siv_gcm.c9r")?;
+    let mut file = EncryptedFile::create_new(&cryptor, "tests/test_small_siv_gcm.c9r")?;
     file.write_all(b"this is a test file with some text in it\n")?;
     file.flush()?;
 
@@ -353,7 +353,7 @@ pub fn siv_gcm_basic() -> yombar::Result<()> {
     let image_data = fs::read("tests/fixtures/test_image.jpg")?;
 
     let _ = fs::remove_file("tests/test_larger_siv_gcm.c9r");
-    let mut file = EncryptedFile::create_new(cryptor, "tests/test_larger_siv_gcm.c9r")?;
+    let mut file = EncryptedFile::create_new(&cryptor, "tests/test_larger_siv_gcm.c9r")?;
     file.write_all(&image_data)?;
     file.flush()?;
 

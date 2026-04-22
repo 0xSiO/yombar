@@ -1,5 +1,6 @@
 use std::{ffi::OsStr, path::PathBuf};
 
+use enum_dispatch::enum_dispatch;
 use secrets::{Secret, SecretBox};
 
 use crate::{Result, key::SUBKEY_LEN};
@@ -38,6 +39,7 @@ impl FileHeader {
     }
 }
 
+#[enum_dispatch]
 pub trait FileCryptor {
     fn encrypted_header_len(&self) -> usize;
 
@@ -81,104 +83,8 @@ pub trait FileCryptor {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[enum_dispatch(FileCryptor)]
 pub enum Cryptor<'k> {
     SivCtrMac(siv_ctrmac::Cryptor<'k>),
     SivGcm(siv_gcm::Cryptor<'k>),
-}
-
-impl FileCryptor for Cryptor<'_> {
-    fn encrypted_header_len(&self) -> usize {
-        match self {
-            Cryptor::SivCtrMac(c) => c.encrypted_header_len(),
-            Cryptor::SivGcm(c) => c.encrypted_header_len(),
-        }
-    }
-
-    fn max_chunk_len(&self) -> usize {
-        match self {
-            Cryptor::SivCtrMac(c) => c.max_chunk_len(),
-            Cryptor::SivGcm(c) => c.max_chunk_len(),
-        }
-    }
-
-    fn max_encrypted_chunk_len(&self) -> usize {
-        match self {
-            Cryptor::SivCtrMac(c) => c.max_encrypted_chunk_len(),
-            Cryptor::SivGcm(c) => c.max_encrypted_chunk_len(),
-        }
-    }
-
-    fn new_header(&self) -> Result<FileHeader> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.new_header(),
-            Cryptor::SivGcm(c) => c.new_header(),
-        }
-    }
-
-    fn encrypt_header(&self, header: &FileHeader) -> Result<Vec<u8>> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.encrypt_header(header),
-            Cryptor::SivGcm(c) => c.encrypt_header(header),
-        }
-    }
-
-    fn decrypt_header(&self, encrypted_header: impl AsRef<[u8]>) -> Result<FileHeader> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.decrypt_header(encrypted_header),
-            Cryptor::SivGcm(c) => c.decrypt_header(encrypted_header),
-        }
-    }
-
-    fn encrypt_chunk(
-        &self,
-        chunk: impl AsRef<[u8]>,
-        header: &FileHeader,
-        chunk_number: usize,
-    ) -> Result<Vec<u8>> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.encrypt_chunk(chunk, header, chunk_number),
-            Cryptor::SivGcm(c) => c.encrypt_chunk(chunk, header, chunk_number),
-        }
-    }
-
-    fn decrypt_chunk(
-        &self,
-        encrypted_chunk: impl AsRef<[u8]>,
-        header: &FileHeader,
-        chunk_number: usize,
-    ) -> Result<Vec<u8>> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.decrypt_chunk(encrypted_chunk, header, chunk_number),
-            Cryptor::SivGcm(c) => c.decrypt_chunk(encrypted_chunk, header, chunk_number),
-        }
-    }
-
-    fn hash_dir_id(&self, dir_id: impl AsRef<str>) -> Result<PathBuf> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.hash_dir_id(dir_id),
-            Cryptor::SivGcm(c) => c.hash_dir_id(dir_id),
-        }
-    }
-
-    fn encrypt_name(
-        &self,
-        name: impl AsRef<OsStr>,
-        parent_dir_id: impl AsRef<str>,
-    ) -> Result<String> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.encrypt_name(name, parent_dir_id),
-            Cryptor::SivGcm(c) => c.encrypt_name(name, parent_dir_id),
-        }
-    }
-
-    fn decrypt_name(
-        &self,
-        encrypted_name: impl AsRef<str>,
-        parent_dir_id: impl AsRef<str>,
-    ) -> Result<String> {
-        match self {
-            Cryptor::SivCtrMac(c) => c.decrypt_name(encrypted_name, parent_dir_id),
-            Cryptor::SivGcm(c) => c.decrypt_name(encrypted_name, parent_dir_id),
-        }
-    }
 }
